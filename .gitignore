@@ -1,0 +1,11 @@
+# run artifacts (generated, not source)
+agentloop.state.json
+agentloop.summary.txt
+agentloop.log
+agentloop.pid
+STOP
+.agentloop/
+__pycache__/
+*.pyc
+
+sandbox/.fixed
