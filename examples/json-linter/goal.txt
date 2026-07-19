@@ -1,0 +1,10 @@
+Build a JSON linter in the sandbox. It reads a JSON file from a path argument and:
+
+1. Validates that the JSON is syntactically correct
+2. Reports any structural errors with line numbers
+3. If valid, exits with code 0 and prints "Valid JSON"
+4. If invalid, exits with code 1 and prints one error per line: "line N: error description"
+
+Write a Python script called json_linter.py that implements this.
+Test it against valid and invalid JSON files.
+When the goal is met and verified, reply exactly: DONE.

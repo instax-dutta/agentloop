@@ -3,6 +3,15 @@
 These are ready to create as GitHub issues once the repo is published.
 Batch-create with: `gh issue create --title "..." --body "..."` (or paste into the UI).
 
+## Done in 0.2.0 (Phase A production hardening)
+
+- Secret scrubbing: API keys / tokens never reach the agent; `ORACLE_SEAL` only reaches `VERIFY_CMD`
+- `.env` untracked; `.env.example` + gitignore; installable package (`pyproject.toml`, `agentloop` CLI)
+- Direct-mode reflection control flow fixed; wall-clock uses absolute `started_at` across resume
+- Full-line `DONE`/`BLOCKED` matching; atomic state/summary writes; SIGTERM/SIGINT → STOP
+- Sandbox auto `git init` for checkpoints; graceful `stop.sh`; structured exit codes
+- CI workflow (Linux, Python 3.10/3.12/3.13); LICENSE; CONTRIBUTING; `--version`
+
 ---
 
 ## 1. Hard per-run cost cap

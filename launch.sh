@@ -23,7 +23,15 @@ if [ -f agentloop.pid ] && kill -0 "$(cat agentloop.pid)" 2>/dev/null; then
   exit 0
 fi
 
-# 3) clear any stale STOP signal and launch
+# 3) ensure sandbox exists and is a git repo (for checkpoints)
+mkdir -p sandbox
+if [ ! -d sandbox/.git ]; then
+  git -C sandbox init -q
+  git -C sandbox config user.email "agentloop@local"
+  git -C sandbox config user.name "agentloop"
+fi
+
+# 4) clear any stale STOP signal and launch
 rm -f STOP
 nohup python3 agentloop.py >> agentloop.log 2>&1 &
 echo "Launched pid $!. Mode=$MODE. Logs: tail -f $ROOT/agentloop.log  | Stop: ./stop.sh"

@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: tests (${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+      - name: Lint (ruff)
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: |
+          pip install ruff
+          ruff check --output-format=github .
+      - name: Oracle tests
+        run: python test_oracle.py
+        shell: bash
+      - name: Loop tests (Linux only — needs bash + mock_agent.sh)
+        if: matrix.os == 'ubuntu-latest'
+        run: python test_loop.py
+        shell: bash
+      - name: CLI smoke (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m agentloop --version
+          python -m agentloop --dry-run --harness opencode --verify "bash verify.sh" "smoke"
+          python -m agentloop status
+      - name: CLI smoke (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          python -m agentloop --version
+          python -m agentloop status
+        shell: bash
+
+  nightly-integration:
+    name: nightly real-harness test
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+      - name: Install OpenCode (nightly)
+        run: npm install -g opencode || echo "OpenCode install failed (expected if not available)"
+      - name: End-to-end test (if OpenCode available)
+        run: |
+          if command -v opencode &> /dev/null; then
+            echo "OpenCode available — running full loop"
+            # Quick test: simple goal with verification
+            python -m agentloop "print('hello world')" \
+              --verify "python3 -c 'import sys; sys.exit(0)'" \
+              --max-iters 2 --step-delay 0
+          else
+            echo "OpenCode not available — skipping"
+          fi

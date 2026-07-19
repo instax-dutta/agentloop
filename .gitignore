@@ -1,3 +1,8 @@
+# secrets / local config
+.env
+.env.*
+!.env.example
+
 # run artifacts (generated, not source)
 agentloop.state.json
 agentloop.summary.txt
@@ -7,5 +12,30 @@ STOP
 .agentloop/
 __pycache__/
 *.pyc
+*.pyo
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
 
+# sandbox working state (keep demo sources tracked)
 sandbox/.fixed
+sandbox/.git/
+# do not ignore sandbox/*.py — tax_calc.py is the demo artifact
+
+# OS / editor
+.DS_Store
+*.swp
+*~
+
+# agent handoff document (for other coding agents)
+TODOs.md
+
+# local brag / video output
+brag-output*/

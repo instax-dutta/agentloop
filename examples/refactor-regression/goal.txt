@@ -1,0 +1,33 @@
+Refactor the Python script refactor_target.py in the sandbox:
+
+Current code (in sandbox/refactor_target.py):
+```python
+def process(data):
+    result = []
+    for i in range(len(data)):
+        d = data[i]
+        x = d['x']
+        y = d['y']
+        if x > 0:
+            if y > 0:
+                result.append({'label': 'A', 'val': x + y})
+            else:
+                result.append({'label': 'B', 'val': x - y})
+        else:
+            if y > 0:
+                result.append({'label': 'C', 'val': y - x})
+            else:
+                result.append({'label': 'D', 'val': x * y})
+    return result
+```
+
+Refactor this to be more readable by:
+1. Using a helper function or lookup table instead of nested if/else
+2. Adding type hints
+3. Adding a docstring
+4. Using more descriptive variable names
+
+The refactored code must produce EXACTLY the same output for ALL inputs.
+Test it against the original with several cases.
+
+When the goal is met and verified, reply exactly: DONE.
