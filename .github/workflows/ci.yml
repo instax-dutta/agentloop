@@ -34,7 +34,8 @@ jobs:
         run: |
           cd sandbox && rm -f .fixed && bash ../mock_agent.sh && bash ../mock_agent.sh
         shell: bash
-      - name: Oracle tests
+      - name: Oracle tests (Linux only — needs bash + mock_agent.sh)
+        if: matrix.os == 'ubuntu-latest'
         run: python test_oracle.py
         shell: bash
       - name: Loop tests (Linux only — needs bash + mock_agent.sh)
