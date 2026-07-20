@@ -1,219 +1,291 @@
-# AgentLoop
+# Stop paying for agents that never finish.
 
-Run coding agents in a verification loop until the task actually passes your checks.
-
-AgentLoop re-invokes your chosen agent, feeds failures back into the next iteration, and stops only when a human-authored verifier says the work is correct.
-
-- Works with multiple agent harnesses
-- Retries until verification passes
-- Resumes after crashes
-- Supports held-out verification
-- Supports cost caps and notifications
-
-```text
-goal -> agent edits -> verify fails -> failure fed back -> agent retries -> verify passes
-```
-
-## Why this exists
-
-Coding agents often stop halfway or pass only the obvious cases. A naive loop that checks whether the agent said "DONE" fails in two common ways:
-
-1. **Partial completion.** The agent quits mid-task; the loop thinks it won.
-2. **Overfitting.** If the checks are visible to the agent, it can pass without being generally correct.
-
-AgentLoop fixes both by separating the agent from the verifier:
-
-- the agent makes changes
-- the verifier decides whether the work is actually correct
-- AgentLoop keeps retrying until the verifier passes
-
-## Why people use it
-
-AgentLoop is useful when "looks right" is not enough and you need proven correctness.
-
-- Works with OpenCode, Kilo Code, Claude Code, Aider, Codex, and Goose
-- Keeps a run going even if the process crashes
-- Lets you use human-authored or held-out checks
-- Tracks cost and can stop before runaway bills
-- Sends terminal-state notifications
-
-## Quick start
-
-```bash
-git clone <this> agentloop && cd agentloop
-python3 -m pip install -e .
-cp .env.example .env
-chmod +x launch.sh stop.sh verify.sh mock_agent.sh oracle.py
-```
-
-You need **OpenCode installed** (`npm i -g opencode` or your package manager) and a free model configured in it. No API key is required by AgentLoop itself.
-
-### One-liner
+**AgentLoop makes your coding agent actually complete tasks correctly — or it keeps going. No false "DONE." No wasted API calls.**
 
 ```bash
 agentloop "build a JSON linter" --verify "bash verify.sh"
-agentloop --dry-run --harness opencode --verify "bash verify.sh"
-agentloop --init
-agentloop --version
-agentloop --status
-agentloop --serve
 ```
 
-Or the file-based flow:
+Free. MIT licensed. Free models. No API key needed. Works with OpenCode, Claude Code, Aider, Goose, and more.
 
-1. Put the task in `goal.txt`.
-2. Write a verification oracle — a script that exits 0 only when the work is correct.
-3. Run `./launch.sh`, watch `tail -f agentloop.log`, stop with `./stop.sh`.
+---
 
-## The verification oracle
+## You already know the pain.
 
-The agent's own tests are not trusted: it can validate "it runs" without noticing wrong numbers. Instead, a separate human-authored check is run by the harness on each iteration:
+Coding agents are famous for **stopping halfway** and claiming they're done.
 
-- Exit 0 → accepted, loop ends, `agentloop.summary.txt` is written, notifications fire.
-- Non-zero → the failure output is injected back into the next prompt and the agent must keep working.
+OpenCode issue [#24685](https://github.com/instax-dutta/agentloop/issues). The "stopped halfway" essays. You've been there:
 
-### Sealed / held-out oracle
+- The agent writes 80% of the code, then quits. Your loop thinks it won.
+- You bake test cases into your check script — now the agent overfits, passing those exact cases but failing on everything else. (This is the [SWE-bench false-green bug](https://arxiv.org/abs/2410.14816), and it's real.)
+- Your API bill keeps climbing while nothing ships.
 
-A plain check can still be gamed if the author leaks the exact cases to the agent. To stop that, keep a case file outside the sandbox and split it into visible and held-out inputs:
+You've probably thought: *"I'll just write a 20-line bash loop."*
+
+**That doesn't work either.** A naive loop can't tell the difference between "the agent said DONE" and "the agent *actually* solved the problem." You need a **verification oracle** — a correctness gate the agent can't fake, edit, or overfit to.
+
+That's what AgentLoop is.
+
+---
+
+## The verification oracle is the product.
+
+AgentLoop is **not** a coding agent and **not** another BYOK wrapper. It's a thin, harness-agnostic layer that wraps the agent you already use:
+
+```
+   goal + feedback ──► your agent edits the sandbox ──► verification oracle
+          ▲                                                   │
+          └────────────── (fail) ◄───────────────────────────┘
+                         (pass) ──► DONE  (and a sealed oracle agrees)
+```
+
+Three things it adds that people keep rebuilding by hand:
+
+- **Continuity** — loops until the goal is proven correct, not "please clarify"
+- **The verification oracle** — a correctness gate, not "it runs and prints"
+- **Safety** — your API key never reaches the agent; work is git-checkpointed and crash-resumable
+
+> **"Wait — a naive loop can't tell if the work is correct."**  
+> *Correct. That's why AgentLoop exists.*
+
+### The held-out oracle (your moat against overfitting)
+
+A plain verifier can still be gamed if the agent reverse-engineers the test cases. AgentLoop's **sealed, held-out grading** defeats that:
 
 ```bash
+# 1) Auto-generate fresh test inputs from a reference program
 python oracle.py gen --reference "python ref.py" --n 200 --out cases.txt --seed 42
+
+# 2) Record the reference's behavior — split into visible + held-out (sealed)
 python oracle.py record \
   --reference "python ref.py" --inputs cases.txt --visible 3 \
   --out .agentloop/oracle_sealed/oracle.json --seal "$ORACLE_SEAL"
+
+# 3) The verifier grades the candidate against ALL inputs
+#    The candidate only PASSES if it's correct on inputs it has NEVER seen
 python oracle.py grade \
   --candidate "python sandbox/solution.py" \
   --oracle .agentloop/oracle_sealed/oracle.json --seal "$ORACLE_SEAL"
 ```
 
-The candidate only passes if it is correct on inputs it has never seen. A wrong `--seal` makes grading report `TAMPERED`.
+A wrong `--seal` makes grading report **TAMPERED**. The held-out file lives outside the sandbox — the agent can't read it, can't overfit to it. This is the feature that makes AgentLoop worth using over a hand-rolled loop.
 
-## Crash-safe resume + summary
+---
 
-AgentLoop writes `agentloop.state.json` every iteration. If the process or machine dies, run it again with the same goal and it resumes from the last iteration instead of re-planning.
+## Start in 10 seconds.
 
-```text
-resuming from iter 2 (cost so far: $0.10)
+```bash
+git clone https://github.com/instax-dutta/agentloop.git && cd agentloop
+python3 -m pip install -e .
+cp .env.example .env
+agentloop "build a JSON linter" --verify "bash verify.sh"
 ```
 
-When the run ends it writes `agentloop.summary.txt` and fires notifications.
+**One command. Zero configuration.** OpenCode ships free models — no API key needed from you.
 
-## Hard per-run cost cap
+Need Windows?
 
-Prevent runaway API bills with `MAX_COST_USD`:
+```powershell
+.\launch.ps1       # start the loop (background job)
+.\stop.ps1         # stop gracefully
+```
+
+### Or use the file-based flow:
+
+```bash
+agentloop --init                         # scaffold goal.txt + verify.sh + .env
+# edit goal.txt, edit verify.sh, then:
+./launch.sh
+```
+
+### Preview your setup before running:
+
+```bash
+agentloop --dry-run --harness opencode --verify "bash verify.sh"
+# Shows: mode, agent command, verify command, goal, limits, version — no loop starts
+```
+
+### Run multiple tasks at once:
+
+```bash
+agentloop --run plan.md
+```
+
+Parses any markdown plan — checklists, bullets, headings — and spawns one loop per task. Each gets verified independently.
+
+### Check your version:
+
+```bash
+agentloop --version
+# agentloop 0.3.0
+```
+
+---
+
+## It survives crashes.
+
+Your laptop dies mid-run. Your SSH session drops. Your CI runner gets recycled.
+
+**AgentLoop resumes exactly where it stopped.**
+
+```bash
+# Same command, same goal:
+agentloop --verify "bash verify.sh"
+# Output:
+# resuming from iter 2 (cost so far: $0.10)
+```
+
+Every iteration is written atomically to `agentloop.state.json`. A crash leaves zero torn state. The wall clock tracks from the original start — not the resume time — so timeouts are fair.
+
+---
+
+## Don't let a runaway API bill surprise you.
+
+Set a hard cost cap in dollars. If the agent exceeds it, the loop stops with `status=over-budget`:
 
 ```bash
 MAX_COST_USD=5 agentloop "my task" --verify "bash verify.sh"
 ```
 
-The loop tracks running cost in `agentloop.state.json` and stops with `status=over-budget` when the cap is exceeded. In CLI mode, set `ESTIMATED_COST_PER_ITER` to approximate cost. In direct mode, actual token counts are used when available.
+Tracks running cost in `agentloop.state.json`. In CLI mode, set `ESTIMATED_COST_PER_ITER` ($0.10 default). In direct mode, actual token counts are used automatically.
 
-## Hands-off notifications
+### Logs rotate automatically.
 
-Send terminal-state summaries via generic command, Telegram, Discord, or Slack:
+Set `LOG_MAX_MB` in `.env` (default 10 MB) with 3 backup files via Python's `RotatingFileHandler`. No more gigabyte log files.
+
+---
+
+## Know exactly what's happening.
 
 ```bash
-NOTIFY_CMD='curl -s -X POST https://hooks.example.com -d "{kind}: {msg}"'
+agentloop --status       # terminal display: status, iters, elapsed, cost, PID
+agentloop --serve        # web UI at http://localhost:8080 (auto-refresh 5s)
+agentloop --serve --port 9090   # custom port
+```
+
+---
+
+## Get notified when it finishes.
+
+Send terminal-state summaries wherever you work:
+
+```bash
+# Telegram
 NOTIFY_TELEGRAM_BOT_TOKEN=123456:ABC-DEF
 NOTIFY_TELEGRAM_CHAT_ID=-1001234567890
+
+# Discord (webhook URL)
 NOTIFY_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+
+# Slack (webhook URL)
 NOTIFY_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+
+# Or any shell command
+NOTIFY_CMD='curl -s -X POST https://hooks.example.com -d "{kind}: {msg}"'
 ```
 
-`{kind}` and `{msg}` are substituted into the generic command. Native adapters use the REST API directly.
+Supports: `completed`, `blocked`, `stopped`, `timeout`, `over-budget` — each routed through your preferred channel.
 
-## Run monitoring
+---
 
-```bash
-agentloop --status
-agentloop --serve
-agentloop --serve --port 9090
-```
+## Works with whatever agent you use.
 
-## Harnesses (`.env`)
-
-```bash
-AGENT_MODE=cli
-AGENT_PRESET=opencode
-VERIFY_CMD="bash verify.sh"
-# NOTIFY_CMD='...'
-# TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...
-# MAX_COST_USD=5
-```
-
-If `AGENT_PRESET` is empty, AgentLoop auto-detects an installed CLI with version checks. Or set `AGENT_CMD` to any command; the prompt is injected via `$AGENTLOOP_PROMPT`:
-
-```bash
-AGENT_CMD='opencode run "$AGENTLOOP_PROMPT" --auto'
-```
-
-| Preset    | Command |
-|-----------|---------|
-| opencode  | `opencode run "$AGENTLOOP_PROMPT" --auto` |
-| kilocode  | `kilocode run "$AGENTLOOP_PROMPT"` |
+| Preset    | Command                                              |    
+|-----------|------------------------------------------------------|
+| opencode  | `opencode run "$AGENTLOOP_PROMPT" --auto`            |
+| kilocode  | `kilocode run "$AGENTLOOP_PROMPT"`                   |
 | claude    | `claude -p "$AGENTLOOP_PROMPT" --dangerously-skip-permissions` |
-| aider     | `aider --message "$AGENTLOOP_PROMPT" --yes` |
-| codex     | `codex exec "$AGENTLOOP_PROMPT"` |
-| goose     | `goose run "$AGENTLOOP_PROMPT"` |
+| aider     | `aider --message "$AGENTLOOP_PROMPT" --yes`          |
+| codex     | `codex exec "$AGENTLOOP_PROMPT"`                     |
+| goose     | `goose run "$AGENTLOOP_PROMPT"`                      |
 
-## Direct mode (legacy / offline)
-
-If you have no harness installed, `AGENT_MODE=direct` calls an OpenAI-compatible API directly. Set `KILO_API_KEY`, `KILO_BASE_URL`, and `KILO_MODEL` in `.env`.
-
-## Examples gallery
-
-| Example | Description | Verifier Type |
-|---------|-------------|---------------|
-| `tax-demo/` | US tax calculator | Fixed cases in bash |
-| `json-linter/` | JSON syntax validator | Temporary test files |
-| `refactor-regression/` | Refactor with identical output | Held-out oracle (gen + record + grade) |
-
-Each example has a `goal.txt` and `verify.sh`.
-
-## Tests
+No preset matching yours? Set `AGENT_CMD` to any command. The prompt is injected via `$AGENTLOOP_PROMPT`.
 
 ```bash
-python3 test_oracle.py
-python3 test_loop.py
+AGENT_CMD='my-agent run "$AGENTLOOP_PROMPT"'
 ```
 
-Both run deterministically without any model.
+If no preset is set, AgentLoop **auto-detects** an installed CLI with a version check — and warns you if it finds a broken binary.
 
-## Pre-commit hooks
+**Hidden strength:** Because AgentLoop re-invokes the harness *every iteration*, a harness that "stops halfway" just becomes one failed iteration. The loop absorbs it and keeps going.
+
+---
+
+## What's in the box.
+
+| File | What it does |
+|------|-------------|
+| `agentloop.py` | Orchestrator — CLI mode, direct mode, resume, notifications, web UI |
+| `oracle.py` | Verification oracle — sealed held-out grading, input generation |
+| `verify.sh` / `verify_template.sh` | Example verifier + scaffold template |
+| `mock_agent.sh` | Deterministic agent stand-in (for tests) |
+| `launch.sh` / `stop.sh` | Linux/Mac launcher scripts |
+| `launch.ps1` / `stop.ps1` | Windows PowerShell launchers |
+| `examples/` | 3 working verifier samples — tax-demo, JSON linter, refactor-regression |
+| `.pre-commit-config.yaml` | Ruff linting + formatting hooks for contributors |
+
+---
+
+## Real examples. Real verifiers.
+
+The `examples/` directory shows three different approaches:
+
+| Example | What it teaches |
+|---------|----------------|
+| `tax-demo/` | Fixed test cases in bash — a simple, effective oracle |
+| `json-linter/` | Temporary test files generated per iteration |
+| `refactor-regression/` | **Held-out oracle** — gen + record + grade workflow (the moat) |
+
+Each has a `goal.txt` (the task) and `verify.sh` (the oracle). Run `./verify.sh` to see how the oracle works without the loop.
+
+---
+
+## Exit codes (for CI / scripting).
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| completed | 0 | Goal met, verification passed |
+| blocked | 1 | Agent gave up |
+| config / missing agent | 2 | Something isn't set up |
+| timeout | 3 | Wall-clock limit hit |
+| exhausted | 4 | Max iterations reached |
+| over-budget | 5 | Cost cap exceeded |
+| stopped | 130 | SIGTERM/SIGINT / STOP file |
+
+---
+
+## The fine print.
+
+- The wrapped agent runs with `cwd=sandbox`. For hard isolation, use a container (see [ISSUES.md](ISSUES.md#2)).
+- Without `VERIFY_CMD`, the loop falls back on a `DONE`/`BLOCKED` signal from the agent — use a real verifier.
+- Each CLI iteration is a fresh agent invocation. Continuity is maintained by feeding the goal + last failure back.
+- Keep the held-out case file outside the sandbox. The seal is a tamper *signal*, not absolute security.
+- API keys and `ORACLE_SEAL` are stripped from the agent environment. Never put secrets inside the sandbox.
+
+---
+
+## Tests (deterministic, no LLM required)
+
+```bash
+python3 test_oracle.py   # verification gate + held-out oracle
+python3 test_loop.py     # full loop with mock agent + cost cap + status
+```
+
+Both pass on every commit. CI runs them on Linux (Python 3.10/3.12/3.13).
+
+### Pre-commit hooks (for contributors)
 
 ```bash
 pip install -e '.[dev]'
 pre-commit install
 ```
 
-## Limitations
+---
 
-- The wrapped agent runs with `cwd=sandbox`; AgentLoop relies on the harness's own permission model. For hard isolation, run inside a container.
-- Without `VERIFY_CMD`, the loop falls back to a full-line `DONE` / `BLOCKED` signal from the agent; a verifier is strongly recommended.
-- Each CLI iteration is a fresh agent invocation; continuity is maintained by feeding goal + last failure back, not by an in-agent session.
-- The held-out case file should live outside the sandbox; the seal is a tamper signal, not absolute security.
-- API keys and `ORACLE_SEAL` are stripped from the agent environment; the seal is passed only to `VERIFY_CMD`.
+**AgentLoop is 0.3.0. MIT licensed. One file. One purpose: make your agent actually finish.**
 
-## Files
+```bash
+agentloop "build a JSON linter" --verify "bash verify.sh"
+```
 
-- `agentloop.py` — orchestrator (CLI + direct modes, resume, notify)
-- `oracle.py` — verification oracle + sealed / held-out record / grade + input generation
-- `verify.sh` / `verify_template.sh` — example oracle + scaffold template
-- `mock_agent.sh` — deterministic stand-in for a real agent CLI
-- `launch.sh` / `stop.sh` — Linux / Mac launcher scripts
-- `launch.ps1` / `stop.ps1` — Windows launcher scripts
-- `goal.txt` / `.env.example` / `CHANGELOG.md` / `CONTRIBUTING.md`
-- `.pre-commit-config.yaml` — ruff linting hooks
-- `examples/` — working verifier samples
-
-## Exit codes
-
-| Status | Code |
-|--------|------|
-| completed | 0 |
-| blocked | 1 |
-| config / missing agent | 2 |
-| timeout (wall clock) | 3 |
-| exhausted (max iters) | 4 |
-| over-budget (cost cap) | 5 |
-| stopped (STOP / signal) | 130 |
+[Report an issue](https://github.com/instax-dutta/agentloop/issues) · [Contributing guide](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
