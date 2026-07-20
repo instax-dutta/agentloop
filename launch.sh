@@ -33,5 +33,5 @@ fi
 
 # 4) clear any stale STOP signal and launch
 rm -f STOP
-nohup python3 agentloop.py >> agentloop.log 2>&1 &
+nohup python3 -m agentloop >> agentloop.log 2>&1 &
 echo "Launched pid $!. Mode=$MODE. Logs: tail -f $ROOT/agentloop.log  | Stop: ./stop.sh"
