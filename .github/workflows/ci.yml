@@ -29,6 +29,11 @@ jobs:
         run: |
           pip install ruff
           ruff check --output-format=github .
+      - name: Setup sandbox (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cd sandbox && rm -f .fixed && bash ../mock_agent.sh && bash ../mock_agent.sh
+        shell: bash
       - name: Oracle tests
         run: python test_oracle.py
         shell: bash
@@ -41,12 +46,12 @@ jobs:
         run: |
           python -m agentloop --version
           python -m agentloop --dry-run --harness opencode --verify "bash verify.sh" "smoke"
-          python -m agentloop status
+          python -m agentloop --status
       - name: CLI smoke (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           python -m agentloop --version
-          python -m agentloop status
+          python -m agentloop --status
         shell: bash
 
   nightly-integration:

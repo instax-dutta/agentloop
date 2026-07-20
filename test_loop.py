@@ -9,7 +9,7 @@ import json
 import os
 import shutil
 import subprocess
-import sys
+
 import tempfile as _tf
 import textwrap
 import time as _t
@@ -24,8 +24,8 @@ os.environ["STEP_DELAY"] = "0"
 os.environ["MAX_ITERS"] = "5"
 os.environ["AGENT_TIMEOUT"] = "30"
 
-import agentloop
-import oracle
+import agentloop  # noqa: E402
+import oracle      # noqa: E402
 
 sb = ROOT / "sandbox"
 STATE = ROOT / "agentloop.state.json"

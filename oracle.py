@@ -30,13 +30,12 @@ held-out oracle:
 The held-out case file lives OUTSIDE the agent's sandbox (under
 .agentloop/oracle_sealed/), so the agent cannot read or overfit to it.
 """
-import os
-import sys
-import json
 import hashlib
+import json
+import os
+import pathlib
 import random
 import subprocess
-import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parent
 ORACLE_SEALED_DIR = ROOT / ".agentloop" / "oracle_sealed"
@@ -157,7 +156,7 @@ def gate_done(messages: list) -> bool:
         return True
     rc, vout = run_verify(cmd, ROOT)
     if rc != 0:
-        _oracle_log("DONE rejected by verification (rc=%d)." % rc)
+        _oracle_log(f"DONE rejected by verification (rc={rc}).")
         messages.append({"role": "user", "content":
             "VERIFICATION FAILED — your work does not yet meet the goal:\n"
             + vout + "\nFix the code and continue. Only reply DONE once verification passes."})
@@ -420,7 +419,7 @@ def _cli():
 
     args = ap.parse_args()
     if args.cmd == "record":
-        inputs = [l for l in pathlib.Path(args.inputs).read_text().splitlines()]
+        inputs = [line for line in pathlib.Path(args.inputs).read_text().splitlines()]
         data = record_reference(args.reference, inputs, args.visible,
                                 pathlib.Path(args.out), args.seal)
         print(f"recorded {len(data['inputs'])} cases "

@@ -35,6 +35,7 @@ import tempfile
 import textwrap
 import time
 import urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from logging.handlers import RotatingFileHandler
 
@@ -619,9 +620,9 @@ def run_direct_mode(goal: str) -> str:
         sys.exit(EXIT_CONFIG)
     client = OpenAI(base_url=BASE_URL, api_key=API_KEY, timeout=120, max_retries=1)
 
-    DANGER = ["rm -rf /", "mkfs", "shutdown", "reboot", ":(){" , "dd if=",
-              "curl ", "wget ", "git push", "ssh ", "sudo ", "chmod -R 777",
-              "/etc/", ".ssh", "kill -9", "crontab"]
+    danger = ["rm -rf /", "mkfs", "shutdown", "reboot", ":(){" , "dd if=",
+               "curl ", "wget ", "git push", "ssh ", "sudo ", "chmod -R 777",
+               "/etc/", ".ssh", "kill -9", "crontab"]
 
     def confine(path: str) -> pathlib.Path:
         p = (SANDBOX / path).resolve()
@@ -630,7 +631,7 @@ def run_direct_mode(goal: str) -> str:
         return p
 
     def run_shell(cmd: str) -> str:
-        if any(d in cmd for d in DANGER):
+        if any(d in cmd for d in danger):
             return f"REFUSED (blocked pattern): {cmd}"
         try:
             r = subprocess.run(cmd, shell=True, cwd=str(SANDBOX), env=safe_env(),
@@ -657,9 +658,9 @@ def run_direct_mode(goal: str) -> str:
             return f"NOT FOUND: {path}"
         return "\n".join(sorted(str(x.relative_to(SANDBOX)) for x in p.iterdir())) or "(empty)"
 
-    TOOLS = [
+    tools = [
         {"type": "function", "function": {
-            "name": "run_shell", "description": "Run a shell command INSIDE the sandbox only. No network/credential access.",
+            "name": "run_shell", "description": "Run a shell command INSIDE the sandbox.",
             "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}},
         {"type": "function", "function": {
             "name": "write_file", "description": "Write text to a path relative to the sandbox.",
@@ -671,7 +672,7 @@ def run_direct_mode(goal: str) -> str:
             "name": "list_dir", "description": "List a sandbox directory (default: current).",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}},
     ]
-    DISPATCH = {"run_shell": run_shell, "write_file": write_file, "read_file": read_file, "list_dir": list_dir}
+    dispatch = {"run_shell": run_shell, "write_file": write_file, "read_file": read_file, "list_dir": list_dir}
 
     ensure_sandbox_git(SANDBOX)
     messages = [{
@@ -713,7 +714,7 @@ def run_direct_mode(goal: str) -> str:
             log(f"compaction: history trimmed to {len(messages)} messages")
 
         try:
-            r = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
+            r = client.chat.completions.create(model=MODEL, messages=messages, tools=tools)
             delay = STEP_DELAY
         except Exception as e:
             if "429" in str(e) or "rate" in str(e).lower():
@@ -769,7 +770,7 @@ def run_direct_mode(goal: str) -> str:
 
         reflect_streak = 0
         for tc in tool_calls:
-            fn = DISPATCH.get(tc.function.name)
+            fn = dispatch.get(tc.function.name)
             try:
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
@@ -876,9 +877,6 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     """Start a tiny web server showing run status."""
     port = args.port if args.port else 8080
-
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-
     html_page = textwrap.dedent("""\
     <!DOCTYPE html>
     <html lang="en">
@@ -906,7 +904,6 @@ def cmd_serve(args: argparse.Namespace) -> int:
       .timeout { background:#3d2e00; color:#d29922; }
       .stopped { background:#21262d; color:#8b949e; }
       .footer { text-align:center; color:#484f58; margin-top:2rem; font-size:0.85rem; }
-      .refresh { color:#58a6ff; margin:1rem 0; text-align:right; }
       pre { background:#0d1117; padding:0.8rem; border-radius:6px; overflow-x:auto;
             font-size:0.85rem; margin-top:0.5rem; }
     </style>
@@ -963,6 +960,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         return html_page + card + "<div class='footer'>AgentLoop Monitor</div></body></html>"
 
     class _Handler(BaseHTTPRequestHandler):
+        """HTTP request handler for the monitoring UI."""
         def do_GET(self) -> None:
             try:
                 page = _render_status()
