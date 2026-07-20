@@ -663,7 +663,12 @@ def run_direct_mode(goal: str) -> str:
             "parameters": {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}}},
         {"type": "function", "function": {
             "name": "write_file", "description": "Write text to a path relative to the sandbox.",
-            "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}}},
+            "parameters": {
+                "type": "object",
+                "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+                "required": ["path", "content"],
+            },
+        }},
         {"type": "function", "function": {
             "name": "read_file",
             "description": "Read a file relative to the sandbox.",
@@ -1076,7 +1081,7 @@ def cmd_run_plan(args: argparse.Namespace) -> int:
 
 def _parse_plan(text: str) -> list[str]:
     """Extract task lines from a markdown plan file.
-    
+
     Recognizes:
     - `- [ ] task` (GitHub-style checklist)
     - `## task` (heading as task)\n    - `- task` (bullet point)
@@ -1105,7 +1110,6 @@ def _scaffold(args: argparse.Namespace) -> None:
     goal_file = cwd / "goal.txt"
     verify_file = cwd / "verify.sh"
     env_file = cwd / ".env"
-    sandbox_dir = cwd / "sandbox"
 
     # Determine example to seed from
     example_dir = None
@@ -1156,8 +1160,8 @@ def _scaffold(args: argparse.Namespace) -> None:
     print("Scaffolded: goal.txt, verify.sh, .env")
     print()
     print("  Next steps:")
-    print(f"    agentloop --dry-run                            # preview config")
-    print(f"    agentloop --verify \"bash verify.sh\"           # run once")
+    print("    agentloop --dry-run                            # preview config")
+    print('    agentloop --verify "bash verify.sh"           # run once')
 
 
 # ============================================================================

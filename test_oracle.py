@@ -2,6 +2,7 @@
 """Deterministic test of the verification oracle (no LLM required)."""
 import os
 import subprocess
+import tempfile
 import pathlib
 
 from agentloop import oracle
@@ -39,7 +40,7 @@ assert rc == 0, f"verify.sh failed unexpectedly:\n{out}"
 print("run_verify(verify.sh): PASS")
 
 # 5) real oracle must FAIL on intentionally broken code
-import pathlib, shutil
+import shutil
 sb = oracle.ROOT / "sandbox" / "tax_calc.py"
 bak = oracle.ROOT / "sandbox" / "_tax_bak.py"
 shutil.copy(sb, bak)
@@ -53,7 +54,6 @@ finally:
     shutil.move(bak, sb)  # restore corrected code
 
 # 6) sealed / held-out oracle: correct candidate passes, broken one fails
-import tempfile, os as _os
 tmp = pathlib.Path(tempfile.mkdtemp())
 ref = tmp / "ref.py"
 cand_ok = tmp / "ok.py"
@@ -106,8 +106,7 @@ assert "KILO_API_KEY" not in verify_env
 print("safe_env agent vs verify scrubbing: PASS")
 
 # 8) oracle.py gen: auto-generate inputs from a reference program
-import tempfile, pathlib as _pl
-_tmp = _pl.Path(tempfile.mkdtemp())
+_tmp = pathlib.Path(tempfile.mkdtemp())
 _gen_ref = _tmp / "gen_ref.py"
 _gen_ref.write_text("import sys; print(int(sys.stdin.read().strip()) * 2)\n")
 _gen_out = _tmp / "gen_cases.txt"
@@ -119,7 +118,7 @@ lines = _gen_out.read_text().strip().splitlines()
 assert 10 <= len(lines) <= 20, f"expected 10-20 lines, got {len(lines)}"
 # Verify edge cases are included
 all_text = "\n".join(lines)
-assert "0" in all_text or any(l.strip() == "0" for l in lines), "edge case '0' should be included"
+assert "0" in all_text or any(line.strip() == "0" for line in lines), "edge case '0' should be included"
 print(f"gen command: generated {len(lines)} inputs, edge cases present -> OK")
 
 # Verify generated inputs actually work with the reference
