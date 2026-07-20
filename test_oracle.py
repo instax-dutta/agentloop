@@ -44,7 +44,7 @@ sb = oracle.ROOT / "sandbox" / "tax_calc.py"
 bak = oracle.ROOT / "sandbox" / "_tax_bak.py"
 shutil.copy(sb, bak)
 try:
-    s = sb.read_text().replace("(11000,0.10)", "(0,0.10)")
+    s = sb.read_text().replace("(11000, 0.10)", "(0, 0.10)")
     sb.write_text(s)
     rc2, _ = oracle.run_verify("bash verify.sh", oracle.ROOT)
     assert rc2 != 0, "oracle should have FAILED on broken code"

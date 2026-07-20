@@ -52,7 +52,7 @@ agentloop.run_cli_mode("build a tax calculator (mock test)")
 passed, out = oracle.verify_passed(ROOT)
 assert passed, f"verification should pass after the loop:\n{out}"
 src = (sb / "tax_calc.py").read_text()
-assert "(11000,0.10)" in src, "final code should be the CORRECT version"
+assert "(11000, 0.10)" in src, "final code should be the CORRECT version"
 assert (sb / ".git").exists(), "sandbox should be git-initialized for checkpoints"
 print("CLI LOOP TEST: PASS (reject -> retry -> pass)")
 

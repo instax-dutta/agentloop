@@ -36,10 +36,9 @@ import textwrap
 import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
-
 from logging.handlers import RotatingFileHandler
 
-from oracle import safe_env, run_verify, verify_passed, gate_done, ROOT
+from oracle import ROOT, gate_done, run_verify, safe_env, verify_passed
 
 __version__ = "0.3.0"
 
@@ -666,13 +665,16 @@ def run_direct_mode(goal: str) -> str:
             "name": "write_file", "description": "Write text to a path relative to the sandbox.",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"}}, "required": ["path", "content"]}}},
         {"type": "function", "function": {
-            "name": "read_file", "description": "Read a file relative to the sandbox.",
+            "name": "read_file",
+            "description": "Read a file relative to the sandbox.",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
         {"type": "function", "function": {
-            "name": "list_dir", "description": "List a sandbox directory (default: current).",
+            "name": "list_dir",
+            "description": "List a sandbox directory (default: current).",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}},
     ]
-    dispatch = {"run_shell": run_shell, "write_file": write_file, "read_file": read_file, "list_dir": list_dir}
+    dispatch = {"run_shell": run_shell, "write_file": write_file,
+                 "read_file": read_file, "list_dir": list_dir}
 
     ensure_sandbox_git(SANDBOX)
     messages = [{
@@ -786,7 +788,8 @@ def run_direct_mode(goal: str) -> str:
                 rc, vout = run_verify(os.environ.get("VERIFY_CMD", ""), ROOT)
                 if rc != 0:
                     log(f"step {step}: (verification failing) feeding results back")
-                    messages.append({"role": "user", "content": "VERIFICATION CURRENTLY FAILS — fix before DONE:\n" + vout})
+                    messages.append({"role": "user", "content":
+                        "VERIFICATION CURRENTLY FAILS — fix before DONE:\n" + vout})
         time.sleep(delay)
 
     finish(status, step, start, goal, step + 1, running_cost)
@@ -942,15 +945,19 @@ def cmd_serve(args: argparse.Namespace) -> int:
 
         badge_class = status if status in ("running", "completed", "blocked", "timeout", "stopped") else "stopped"
 
+        def _row(label, val):
+            return (f"<div class='row'><span class='label'>{label}</span>"
+                    f"<span class='value'>{val}</span></div>")
+
         rows = [
-            f"<div class='row'><span class='label'>Status</span><span class='value'><span class='status-badge {badge_class}'>{status}</span></span></div>",
-            f"<div class='row'><span class='label'>Goal</span><span class='value'>{goal}</span></div>",
-            f"<div class='row'><span class='label'>Mode</span><span class='value'>{mode}</span></div>",
-            f"<div class='row'><span class='label'>Iterations</span><span class='value'>{iters}</span></div>",
-            f"<div class='row'><span class='label'>Elapsed</span><span class='value'>{elapsed}s</span></div>",
+            _row("Status", f"<span class='status-badge {badge_class}'>{status}</span>"),
+            _row("Goal", goal),
+            _row("Mode", mode),
+            _row("Iterations", str(iters)),
+            _row("Elapsed", f"{elapsed}s"),
         ]
         if running_cost > 0:
-            rows.append(f"<div class='row'><span class='label'>Cost</span><span class='value'>${running_cost:.2f}</span></div>")
+            rows.append(_row("Cost", f"${running_cost:.2f}"))
 
         card = f"<div class='card'><h2>Run Status</h2>{''.join(rows)}</div>"
 

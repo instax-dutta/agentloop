@@ -368,7 +368,9 @@ def _gen_strings(rng: random.Random) -> str:
     if choice == 0:
         return "".join(rng.choice(alphabet) for _ in range(rng.randint(1, 20)))
     elif choice == 1:
-        return " ".join("".join(rng.choice(alphabet) for _ in range(rng.randint(1, 8))) for _ in range(rng.randint(1, 5)))
+        words = ["".join(rng.choice(alphabet) for _ in range(rng.randint(1, 8)))
+                 for _ in range(rng.randint(1, 5))]
+        return " ".join(words)
     elif choice == 2:
         return "single" if rng.random() < 0.5 else "married_joint"
     elif choice == 3:
