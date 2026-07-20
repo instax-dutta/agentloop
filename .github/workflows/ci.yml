@@ -4,7 +4,25 @@ on:
   push:
     branches: [main, master]
     tags: ['v*']
+    paths-ignore:
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'CHANGELOG.md'
+      - 'ISSUES.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.env.example'
+      - '**.md'
   pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'CHANGELOG.md'
+      - 'ISSUES.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.env.example'
+      - '**.md'
   workflow_dispatch:
 
 jobs:

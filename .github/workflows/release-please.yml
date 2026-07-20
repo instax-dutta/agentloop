@@ -3,6 +3,15 @@ name: Release Please
 on:
   push:
     branches: [main, master]
+    paths-ignore:
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'CHANGELOG.md'
+      - 'ISSUES.md'
+      - 'LICENSE'
+      - '.gitignore'
+      - '.env.example'
+      - '**.md'
 
 permissions:
   contents: write
