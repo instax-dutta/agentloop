@@ -111,7 +111,7 @@ jobs:
 
             ### 📦 Install
             ```bash
-            pip install agentloop-cli==${{ github.ref_name }}
+            pip install agentloop-cli
             ```
 
   nightly-integration:

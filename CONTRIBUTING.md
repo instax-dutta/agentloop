@@ -44,5 +44,6 @@ When changing `safe_env`, `run_verify`, or the loop’s DONE gate, add or update
 ## Pull requests
 
 - One focused change per PR
+- **Use conventional commits** for PR titles: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. These trigger [Release Please](.github/workflows/release-please.yml) to auto-bump the version on merge.
 - Update `README.md` / `ISSUES.md` if you change user-facing behavior
-- Bump version in `agentloop.py` (`__version__`) and `pyproject.toml` together when releasing
+- Version bumps happen **automatically** via Release Please when a PR is merged to `main`. No manual version edits needed.
