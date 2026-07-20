@@ -312,6 +312,40 @@ pre-commit install
 
 ---
 
+## End-to-End Testing (verified from PyPI)
+
+All features work from a fresh `pip install agentloop-cli` in a clean virtual environment.
+
+| Test | What it proves | Status |
+|------|---------------|:------:|
+| `agentloop --version` | CLI is installed and executable | ✅ |
+| `agentloop --init` | Scaffolds `goal.txt`, `verify.sh`, `.env` | ✅ |
+| `agentloop --dry-run` | Configuration resolves correctly | ✅ |
+| `--example tax-demo` | Seeds a real tax-calculator project | ✅ |
+| `--example json-linter` | Seeds a JSON linter project | ✅ |
+| `--example refactor-regression` | Seeds a held-out oracle demo | ✅ |
+| `oracle gen` — generates 20 test inputs | Genuine edge cases included | ✅ |
+| `oracle record` — splits 3 visible / 17 held-out | Cryptographic seal prevents tampering | ✅ |
+| `oracle grade` — correct solution | **PASS** — 20/20 score 1.00 | ✅ |
+| `oracle grade` — broken solution | **FAIL** — 1/20 score 0.05 | ✅ |
+| `oracle grade` — wrong seal | **TAMPERED** detected | ✅ |
+| `test_oracle.py` (CI) | Oracle gate + held-out grading + env scrubbing | ✅ every commit |
+| `test_loop.py` (CI) | Full mock-agent loop + resume + cost cap | ✅ every commit |
+
+**Results:** All **14 E2E checks pass**. The held-out oracle correctly passes correct code (score 1.00), fails broken code (score 0.05), and detects tampering when the seal is wrong.
+
+```bash
+# Run the E2E suite yourself:
+pip install agentloop-cli
+agentloop --init --example tax-demo
+agentloop --dry-run
+agentloop-oracle gen --reference 'python3 -c "import sys; print(int(sys.stdin.read().strip()) * 2)"' --n 20 --out cases.txt --seed 42
+agentloop-oracle record --reference 'python3 -c "import sys; print(int(sys.stdin.read().strip()) * 2)"' --inputs cases.txt --visible 3 --out oracle.json --seal test-seal
+agentloop-oracle grade --candidate 'python3 -c "import sys; print(int(sys.stdin.read().strip()) * 2)"' --oracle oracle.json --seal test-seal
+```
+
+---
+
 **AgentLoop is 0.4.0. MIT licensed. One file. One purpose: make your agent actually finish.**
 
 ```bash
