@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 # Verification oracle for the refactor-regression example.
 # Uses held-out oracle to ensure refactored code matches original on unseen inputs.
+# Works from the project root (how AgentLoop invokes it) or standalone.
 set -u
-cd "$(dirname "$0")" || exit 2
+
+# Determine project root: script's directory -> up to examples/ -> up to project root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Oracle sealed dir relative to examples/refactor-regression/ for the seal file
+ORACLE_DIR="$SCRIPT_DIR/.agentloop/oracle_sealed"
+mkdir -p "$ORACLE_DIR"
 
 fail=0
 
-# 1. Create the reference (original) code and candidate (refactored) code
-mkdir -p .agentloop/oracle_sealed
-
-# Reference: original implementation
+# 1. Create the reference (original) code
 cat > /tmp/ref.py << 'PY'
 import json, sys
 def process(data):
@@ -51,17 +56,23 @@ print(f'generated {len(cases)} cases')
 " || exit 2
 
 # Record the reference behaviour
-python3 oracle.py record \
+python3 "$PROJECT_ROOT/oracle.py" record \
   --reference "python3 /tmp/ref.py" \
   --inputs /tmp/cases.txt \
   --visible 10 \
-  --out .agentloop/oracle_sealed/refactor_oracle.json \
+  --out "$ORACLE_DIR/refactor_oracle.json" \
   --seal "${ORACLE_SEAL:-refactor-demo-secret}" || exit 2
 
+# Check that the candidate exists in the project sandbox
+if [ ! -f "$PROJECT_ROOT/sandbox/refactor_target.py" ]; then
+  echo "FAIL: $PROJECT_ROOT/sandbox/refactor_target.py not found — has the agent created it?"
+  exit 2
+fi
+
 # Grade the candidate (the refactored code in the sandbox)
-python3 oracle.py grade \
-  --candidate "python3 sandbox/refactor_target.py" \
-  --oracle .agentloop/oracle_sealed/refactor_oracle.json \
+python3 "$PROJECT_ROOT/oracle.py" grade \
+  --candidate "python3 $PROJECT_ROOT/sandbox/refactor_target.py" \
+  --oracle "$ORACLE_DIR/refactor_oracle.json" \
   --seal "${ORACLE_SEAL:-refactor-demo-secret}" || fail=1
 
 if [ "$fail" -ne 0 ]; then echo "VERIFICATION FAILED"; exit 1; fi
