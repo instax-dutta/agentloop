@@ -62,7 +62,7 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
-      id-token: write  # Required for Trusted Publishing (OIDC)
+      id-token: write
     environment:
       name: pypi
       url: https://pypi.org/project/agentloop-cli/
@@ -81,6 +81,38 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+
+  release:
+    name: create GitHub Release
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build package
+        run: |
+          pip install build
+          python -m build --sdist --wheel
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          name: ${{ github.ref_name }}
+          body: |
+            ## agentloop-cli ${{ github.ref_name }}
+
+            See the [changelog](CHANGELOG.md) for details.
+
+            ### 📦 Install
+            ```bash
+            pip install agentloop-cli==${{ github.ref_name }}
+            ```
 
   nightly-integration:
     name: nightly real-harness test
@@ -102,7 +134,6 @@ jobs:
         run: |
           if command -v opencode &> /dev/null; then
             echo "OpenCode available — running full loop"
-            # Quick test: simple goal with verification
             python -m agentloop "print('hello world')" \
               --verify "python3 -c 'import sys; sys.exit(0)'" \
               --max-iters 2 --step-delay 0
