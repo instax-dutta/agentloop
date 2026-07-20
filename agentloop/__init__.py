@@ -40,7 +40,11 @@ from logging.handlers import RotatingFileHandler
 
 from .oracle import DATA_DIR, ROOT, gate_done, run_verify, safe_env, verify_passed
 
-__version__ = "0.3.0"
+try:
+    from importlib.metadata import version as _v
+    __version__ = _v("agentloop-cli")
+except Exception:
+    __version__ = "0.4.0"
 
 # Process exit codes for scripting / CI
 EXIT_COMPLETED = 0
