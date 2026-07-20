@@ -4,7 +4,7 @@
 
 **AgentLoop makes your coding agent actually complete tasks correctly — or it keeps going.**
 
-[![CI](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml/badge.svg)](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml)
+[![CI](https://github.com/instax-dutta/agentloop/actions/workflows/ci.yml/badge.svg)](https://github.com/instax-dutta/agentloop/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/agentloop-cli?color=blue)](https://pypi.org/project/agentloop-cli/)
 [![PyPI downloads](https://img.shields.io/pypi/dm/agentloop-cli?color=purple)](https://pypi.org/project/agentloop-cli/)
 [![Python versions](https://img.shields.io/pypi/pyversions/agentloop-cli?color=green)](https://pypi.org/project/agentloop-cli/)
