@@ -1,6 +1,16 @@
+<div align="center">
+
 # Stop paying for agents that never finish.
 
-**AgentLoop makes your coding agent actually complete tasks correctly — or it keeps going. No false "DONE." No wasted API calls.**
+**AgentLoop makes your coding agent actually complete tasks correctly — or it keeps going.**
+
+[![CI](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml/badge.svg)](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/agentloop-cli?color=blue)](https://pypi.org/project/agentloop-cli/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/agentloop-cli?color=purple)](https://pypi.org/project/agentloop-cli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/agentloop-cli?color=green)](https://pypi.org/project/agentloop-cli/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
+</div>
 
 ```bash
 agentloop "build a JSON linter" --verify "bash verify.sh"
@@ -302,10 +312,7 @@ pre-commit install
 
 ---
 
-[![CI](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml/badge.svg)](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/agentloop-cli)](https://pypi.org/project/agentloop-cli/)
-
-**AgentLoop is 0.3.0. MIT licensed. One file. One purpose: make your agent actually finish.**
+**AgentLoop is 0.4.0. MIT licensed. One file. One purpose: make your agent actually finish.**
 
 ```bash
 agentloop "build a JSON linter" --verify "bash verify.sh"
