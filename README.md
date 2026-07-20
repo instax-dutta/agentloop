@@ -74,14 +74,24 @@ A wrong `--seal` makes grading report **TAMPERED**. The held-out file lives outs
 
 ## Install in 5 seconds.
 
+**From PyPI (recommended):**
+
 ```bash
-git clone https://github.com/instax-dutta/agentloop.git && cd agentloop
-python3 -m pip install -e .
+pip install agentloop-cli
 agentloop --init
 ./launch.sh
 ```
 
-That's it. Three commands. No API key. No `.env` to copy. No config to edit.
+**Or from source:**
+
+```bash
+git clone https://github.com/instax-dutta/agentloop.git && cd agentloop
+pip install -e "."
+agentloop --init
+./launch.sh
+```
+
+That's it. No API key. No `.env` to copy. No config to edit.
 
 **`agentloop --init`** creates everything you need:
 - `goal.txt` — a hello-world task
@@ -291,6 +301,9 @@ pre-commit install
 ```
 
 ---
+
+[![CI](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml/badge.svg)](https://github.com/saiduttaabhishekdash/agentloop/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/agentloop-cli)](https://pypi.org/project/agentloop-cli/)
 
 **AgentLoop is 0.3.0. MIT licensed. One file. One purpose: make your agent actually finish.**
 

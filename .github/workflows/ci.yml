@@ -54,6 +54,28 @@ jobs:
           python -m agentloop --status
         shell: bash
 
+  publish:
+    name: publish to PyPI
+    needs: [test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: |
+          pip install --upgrade pip
+          pip install build
+      - name: Build package
+        run: python -m build --sdist --wheel
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          packages-dir: dist/
+
   nightly-integration:
     name: nightly real-harness test
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'

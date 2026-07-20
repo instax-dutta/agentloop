@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentloop"
+name = "agentloop-cli"
 version = "0.3.0"
 description = "Harness-agnostic, self-verifying autonomy wrapper for coding agents"
 readme = "README.md"
@@ -47,10 +47,6 @@ packages = ["agentloop", "agentloop.data"]
 "agentloop" = ["data/**/*"]
 "agentloop.data" = ["**/*"]
 
-[tool.setuptools.data-files]
-"examples/tax-demo" = ["examples/tax-demo/*"]
-"examples/json-linter" = ["examples/json-linter/*"]
-"examples/refactor-regression" = ["examples/refactor-regression/*"]
 
 [tool.ruff]
 line-length = 120
