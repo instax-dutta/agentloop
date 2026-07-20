@@ -72,16 +72,21 @@ A wrong `--seal` makes grading report **TAMPERED**. The held-out file lives outs
 
 ---
 
-## Start in 10 seconds.
+## Install in 5 seconds.
 
 ```bash
 git clone https://github.com/instax-dutta/agentloop.git && cd agentloop
 python3 -m pip install -e .
-cp .env.example .env
-agentloop "build a JSON linter" --verify "bash verify.sh"
+agentloop --init
+./launch.sh
 ```
 
-**One command. Zero configuration.** OpenCode ships free models — no API key needed from you.
+That's it. Three commands. No API key. No `.env` to copy. No config to edit.
+
+**`agentloop --init`** creates everything you need:
+- `goal.txt` — a hello-world task
+- `verify.sh` — a working verifier, ready to run
+- `.env` — zero-config defaults
 
 Need Windows?
 
@@ -90,18 +95,23 @@ Need Windows?
 .\stop.ps1         # stop gracefully
 ```
 
-### Or use the file-based flow:
+### Try a real example instead:
 
 ```bash
-agentloop --init                         # scaffold goal.txt + verify.sh + .env
-# edit goal.txt, edit verify.sh, then:
-./launch.sh
+agentloop --init --example tax-demo
+# Seeds: goal.txt + verify.sh from the tax-demo example
+```
+
+Or jump straight in:
+
+```bash
+agentloop "build a JSON linter" --verify "bash verify.sh"
 ```
 
 ### Preview your setup before running:
 
 ```bash
-agentloop --dry-run --harness opencode --verify "bash verify.sh"
+agentloop --dry-run
 # Shows: mode, agent command, verify command, goal, limits, version — no loop starts
 ```
 
@@ -111,7 +121,7 @@ agentloop --dry-run --harness opencode --verify "bash verify.sh"
 agentloop --run plan.md
 ```
 
-Parses any markdown plan — checklists, bullets, headings — and spawns one loop per task. Each gets verified independently.
+Parses any markdown plan — checklists, bullets, headings — and spawns one loop per task.
 
 ### Check your version:
 
