@@ -25,7 +25,7 @@ os.environ["MAX_ITERS"] = "5"
 os.environ["AGENT_TIMEOUT"] = "30"
 
 import agentloop  # noqa: E402
-import oracle      # noqa: E402
+from agentloop import oracle  # noqa: E402
 
 sb = ROOT / "sandbox"
 STATE = ROOT / "agentloop.state.json"

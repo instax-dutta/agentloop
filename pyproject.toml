@@ -8,14 +8,13 @@ version = "0.3.0"
 description = "Harness-agnostic, self-verifying autonomy wrapper for coding agents"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "AgentLoop contributors" }]
 keywords = ["agents", "autonomy", "verification", "oracle", "coding-agents"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
@@ -35,14 +34,23 @@ dev = [
 
 [project.scripts]
 agentloop = "agentloop:cli"
-agentloop-oracle = "oracle:_cli_entry"
+agentloop-oracle = "agentloop.oracle:_cli_entry"
 
 [project.urls]
 Homepage = "https://github.com/saiduttaabhishekdash/agentloop"
 Issues = "https://github.com/saiduttaabhishekdash/agentloop/issues"
 
 [tool.setuptools]
-py-modules = ["agentloop", "oracle"]
+packages = ["agentloop", "agentloop.data"]
+
+[tool.setuptools.package-data]
+"agentloop" = ["data/**/*"]
+"agentloop.data" = ["**/*"]
+
+[tool.setuptools.data-files]
+"examples/tax-demo" = ["examples/tax-demo/*"]
+"examples/json-linter" = ["examples/json-linter/*"]
+"examples/refactor-regression" = ["examples/refactor-regression/*"]
 
 [tool.ruff]
 line-length = 120

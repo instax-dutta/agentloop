@@ -37,8 +37,9 @@ import pathlib
 import random
 import subprocess
 
-ROOT = pathlib.Path(__file__).resolve().parent
+ROOT = pathlib.Path.cwd()
 ORACLE_SEALED_DIR = ROOT / ".agentloop" / "oracle_sealed"
+DATA_DIR = pathlib.Path(__file__).resolve().parent / "data"
 
 # Keys the agent (and untrusted subprocesses) must never inherit.
 _EXPLICIT_SECRET_KEYS = frozenset({

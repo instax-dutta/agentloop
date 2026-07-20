@@ -38,7 +38,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from logging.handlers import RotatingFileHandler
 
-from oracle import ROOT, gate_done, run_verify, safe_env, verify_passed
+from .oracle import DATA_DIR, ROOT, gate_done, run_verify, safe_env, verify_passed
 
 __version__ = "0.3.0"
 
@@ -1101,36 +1101,40 @@ def _parse_plan(text: str) -> list[str]:
 # ============================================================================
 def _scaffold(args: argparse.Namespace) -> None:
     """Create goal.txt / verify.sh / .env for a first run, then exit."""
+    cwd = pathlib.Path.cwd()
+    goal_file = cwd / "goal.txt"
+    verify_file = cwd / "verify.sh"
+    env_file = cwd / ".env"
+    sandbox_dir = cwd / "sandbox"
+
     # Determine example to seed from
     example_dir = None
     if args.example:
-        example_dir = ROOT / "examples" / args.example
+        example_dir = DATA_DIR / "examples" / args.example
         if not example_dir.exists():
-            print(f"ERROR: example {args.example!r} not found in examples/")
-            print(f"Available: {', '.join(sorted(d.name for d in (ROOT/'examples').iterdir() if d.is_dir()))}")
+            print(f"ERROR: example {args.example!r} not found")
+            available = [d.name for d in (DATA_DIR / "examples").iterdir() if d.is_dir()]
+            print(f"Available: {', '.join(sorted(available))}")
             return
 
     if example_dir:
-        # Seed from example
         goal_src = example_dir / "goal.txt"
         verify_src = example_dir / "verify.sh"
         if goal_src.exists():
-            shutil.copy(goal_src, GOAL_FILE)
+            shutil.copy(goal_src, goal_file)
         if verify_src.exists():
-            shutil.copy(verify_src, ROOT / "verify.sh")
-            os.chmod(ROOT / "verify.sh", 0o755)
+            shutil.copy(verify_src, verify_file)
+            os.chmod(verify_file, 0o755)
         print(f"Seeded from example: {args.example}")
     else:
-        # Default scaffold: hello-world goal
         if args.goal:
-            GOAL_FILE.write_text(args.goal + "\n")
-        elif not GOAL_FILE.exists():
-            GOAL_FILE.write_text(
+            goal_file.write_text(args.goal + "\n")
+        elif not goal_file.exists():
+            goal_file.write_text(
                 "Create a Python script called hello.py that prints Hello, AgentLoop! to stdout\n")
 
-        if not (ROOT / "verify.sh").exists():
-            verify_sh = ROOT / "verify.sh"
-            verify_sh.write_text(
+        if not verify_file.exists():
+            verify_file.write_text(
                 '#!/usr/bin/env bash\n'
                 '# Verification oracle for AgentLoop.\n'
                 '# Exit 0 if the goal is met. Exit non-zero if not.\n'
@@ -1142,13 +1146,11 @@ def _scaffold(args: argparse.Namespace) -> None:
                 'echo "hello.py not found or incorrect output"\n'
                 'exit 1\n'
             )
-            os.chmod(verify_sh, 0o755)
+            os.chmod(verify_file, 0o755)
 
-    # Ensure .env exists
-    env_path = ROOT / ".env"
-    if not env_path.exists():
+    if not env_file.exists():
         preset = args.harness or "opencode"
-        env_path.write_text(
+        env_file.write_text(
             f"AGENT_MODE=cli\nAGENT_PRESET={preset}\nVERIFY_CMD=\"bash verify.sh\"\n")
 
     print("Scaffolded: goal.txt, verify.sh, .env")
@@ -1156,7 +1158,6 @@ def _scaffold(args: argparse.Namespace) -> None:
     print("  Next steps:")
     print(f"    agentloop --dry-run                            # preview config")
     print(f"    agentloop --verify \"bash verify.sh\"           # run once")
-    print(f"    ./launch.sh                                    # run in background")
 
 
 # ============================================================================

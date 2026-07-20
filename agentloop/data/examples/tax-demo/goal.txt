@@ -1,0 +1,7 @@
+This example reuses the existing tax_calc.py demo from the main sandbox.
+See goal.txt in the project root for the full goal text.
+
+The verification oracle is at verify.sh in the project root, which runs
+against sandbox/tax_calc.py.
+
+To run: agentloop --verify "bash examples/tax-demo/verify.sh" "Build a tax calculator"

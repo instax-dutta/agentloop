@@ -4,7 +4,7 @@ import os
 import subprocess
 import pathlib
 
-import oracle
+from agentloop import oracle
 
 ROOT = pathlib.Path(__file__).resolve().parent
 
