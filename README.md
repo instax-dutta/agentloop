@@ -241,6 +241,28 @@ If no preset is set, AgentLoop **auto-detects** an installed CLI with a version 
 
 ---
 
+## AgentLoop vs GNHF
+
+Both tools loop coding agents until a task is done, but they solve different problems.
+
+| Feature | AgentLoop | [GNHF](https://github.com/kunchenguid/gnhf) "Good Night, Have Fun" |
+|---------|:--------:|:----:|
+| **Verification oracle** | ✅ Independent, unskippable gate | ❌ No oracle — trusts agent's "done" signal |
+| **Held-out grading** (anti-overfitting) | ✅ Sealed, tamper-evident | ❌ |
+| **Crash-safe resume** | ✅ Atomic state, survives reboot | ❌ Fresh start on crash |
+| **Hard cost cap** ($ limit) | ✅ MAX_COST_USD | ❌ Max iterations only |
+| **Notifications** (Telegram/Discord/Slack) | ✅ Built-in | ❌ |
+| **Web monitoring** | ✅ Built-in HTTP server | ❌ |
+| **Environment scrubbing** (API key safety) | ✅ Automated | ❌ |
+| **Install** | `pip install agentloop-cli` | `brew` or clone + `npm install` |
+| **Dependencies** | **Zero** — pure Python, no npm | Node.js + npm |
+| **Lines of code** | ~2,000 | ~10,000+ |
+| **License** | MIT | MIT |
+
+**The difference:** GNHF is an *orchestrator* that keeps agents running through the night. AgentLoop is a *correctness enforcer* that keeps agents running *until the work is proven correct*. The held-out oracle — which GNHF lacks — is what prevents your agent from claiming victory on broken code.
+
+---
+
 ## What's in the box.
 
 | File | What it does |
