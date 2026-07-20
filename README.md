@@ -332,7 +332,7 @@ All features work from a fresh `pip install agentloop-cli` in a clean virtual en
 | `test_oracle.py` (CI) | Oracle gate + held-out grading + env scrubbing | ✅ every commit |
 | `test_loop.py` (CI) | Full mock-agent loop + resume + cost cap | ✅ every commit |
 
-**Results:** All **14 E2E checks pass**. The held-out oracle correctly passes correct code (score 1.00), fails broken code (score 0.05), and detects tampering when the seal is wrong.
+**Results:** All **13 E2E checks pass**. The held-out oracle correctly passes correct code (score 1.00), fails broken code (score 0.05), and detects tampering when the seal is wrong.
 
 ```bash
 # Run the E2E suite yourself:
