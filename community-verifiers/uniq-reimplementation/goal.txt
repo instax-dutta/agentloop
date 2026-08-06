@@ -1,0 +1,27 @@
+Write a Python script in the sandbox called uniq.py that behaves EXACTLY like
+the reference implementation the verifier uses.
+
+It reads lines from standard input and prints each run of CONSECUTIVE
+duplicate lines only once (its first occurrence), preserving the original
+order and the exact line text — including blank lines, tabs, and leading or
+trailing whitespace.
+
+Optional flag: `-c` prefixes each output line with the run length, formatted
+as "{count} {line}" (count, a single space, then the line).
+
+Examples:
+  input:   "apple\napple\nbanana\nbanana\nbanana\napple\n"
+  output:  "apple\nbanana\napple\n"
+  with -c: "2 apple\n3 banana\n1 apple\n"
+
+Rules to get right:
+- Only ADJACENT duplicates merge. "a\nb\na" stays three lines.
+- Empty input produces no output at all (not even a blank line).
+- A blank line "" is a real line and dedups with other blank lines, but is
+  different from a whitespace-only line like " ".
+- The `-c` count is the run length as an integer.
+
+The verifier generates random line batches and compares your stdout
+byte-for-byte against a reference on every batch, with and without `-c`.
+Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

@@ -51,5 +51,10 @@ network effect: users share verifiers → more users → more verifiers.
 ## Contributed verifiers
 
 - [`filename-sanitizer/`](filename-sanitizer/) — batch-rename a fixture tree and
-  assert post-conditions (`tags: fixture`). First contribution — use it as the
-  template for yours.
+  assert post-conditions (`tags: fixture`).
+- [`uniq-reimplementation/`](uniq-reimplementation/) — reimplement the `uniq`
+  CLI and prove it by byte-for-byte comparison against a reference on
+  generated inputs (`tags: behavior-equivalence`).
+
+Use either as the template for yours — every verifier ships a `solution/`
+dir that CI seeds and checks.
