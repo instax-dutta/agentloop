@@ -16,6 +16,39 @@ All notable changes to AgentLoop are documented here.
 ### Documentation
 
 * summarize community verifiers in the examples gallery ([7595129](https://github.com/instax-dutta/agentloop/commit/7595129358caee6d63f157783301e6985f965720))
+* mirror EXAMPLES.md community-verifier summaries into the gallery ([891b51e](https://github.com/instax-dutta/agentloop/commit/891b51ebc4b06df25d8dd54e95cb6bccdb528168))
+* changelog entry for community verifiers (4 verifiers, adversarial CI check, gallery docs) ([3a61519](https://github.com/instax-dutta/agentloop/commit/3a61519ea786a78c524e66df73075eb320e40e0d))
+
+## [0.6.0-dev] — 2026-08-06
+
+### Added
+
+- **Community verifiers marketplace is live** — `community-verifiers/` now
+  ships **4 working verifiers**, each a copy-paste-able `verify.sh` pattern
+  tagged by oracle type:
+  - `filename-sanitizer` — fixture + post-conditions (`tags: fixture`)
+  - `uniq-reimplementation` — byte-for-byte behavior-equivalence against a
+    reference on seeded random inputs (`tags: behavior-equivalence`)
+  - `roman-numeral-converter` — held-out oracle: sealed reference on ~80
+    generated inputs, only 3 visible, graded on every one
+    (`tags: held-out-oracle`)
+  - `rpn-calculator` — property-based: seeded pairs of algebraically-equal
+    RPN expressions must agree, with no reference or expected values
+    (`tags: property-based`)
+
+- **Adversarial CI check for the gallery** —
+  `community-verifiers/check_verifiers.py` proves every verifier in *both*
+  directions: it seeds the sandbox from the verifier's `solution/` and
+  requires `verify.sh` to exit 0 (accepts correct code), then re-seeds from
+  `bad-solution/` and requires exit 1 (rejects incorrect code). A mirror gate
+  enforces `bad-solution/` matches `solution/` file-for-file so `verify.sh`
+  genuinely runs the bad code, and exit 2 ("unable to evaluate") counts as a
+  failure. Contributions that can't tell correct from incorrect fail CI.
+
+- **Gallery docs** — the Example Gallery (`docs/EXAMPLES.md`) gained a
+  "Community verifiers" section, and `community-verifiers/README.md` mirrors
+  the same per-verifier summaries (oracle pattern, what it teaches, runtime,
+  cost), with the gallery linked from the README.
 
 ## [0.5.0](https://github.com/instax-dutta/agentloop/compare/v0.4.0...v0.5.0) (2026-08-06)
 
