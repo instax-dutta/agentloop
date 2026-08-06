@@ -124,5 +124,8 @@ See the full list any time with `agentloop --examples`.
 | Builds a service | Integration (HTTP) | `api-endpoint` |
 | Mutates a system | Fixture + post-conditions | `git-history-rewriter` |
 
-Share your own `verify.sh` patterns in `community-verifiers/` — see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+Share your own `verify.sh` patterns in the
+[community-verifiers gallery](../community-verifiers/) — a copy-paste-able
+library of community-submitted verifiers with a merge checklist and a tag
+taxonomy (held-out, golden-files, fixture, …). Full contribution rules live
+in [CONTRIBUTING.md](../CONTRIBUTING.md).

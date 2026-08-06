@@ -300,6 +300,7 @@ If your agent harness already edits code well, the only missing piece is *knowin
 | `launch.sh` / `stop.sh` | Linux/Mac launcher scripts |
 | `launch.ps1` / `stop.ps1` | Windows PowerShell launchers |
 | `examples/` | 10 working verifier samples — see `agentloop --examples` |
+| `community-verifiers/` | Community-submitted `verify.sh` patterns — see the [gallery](community-verifiers/README.md) |
 | `.pre-commit-config.yaml` | Ruff linting + formatting hooks for contributors |
 
 ---
@@ -322,6 +323,8 @@ The `examples/` directory ships **10 working verifier samples**, each teaching a
 | `refactor-regression/` | **Held-out oracle** — gen + record + grade workflow (the moat) |
 
 Each has a `goal.txt` (the task) and `verify.sh` (the oracle). Run `./verify.sh` to see how the oracle works without the loop. Browse the full gallery — with runtime/cost estimates and how to pick a pattern — in [docs/EXAMPLES.md](docs/EXAMPLES.md).
+
+Built a verifier worth sharing? Add it to the [community-verifiers gallery](community-verifiers/README.md) — copy-paste-able `verify.sh` patterns with a merge checklist, so your oracle pattern becomes a template for everyone else.
 
 ---
 
