@@ -2,6 +2,23 @@
 
 All notable changes to AgentLoop are documented here.
 
+## [0.6.0](https://github.com/instax-dutta/agentloop/compare/v0.5.0...v0.6.0) (2026-08-06)
+
+
+### Features
+
+* add behavior-equivalence community verifier (uniq reimplementation) ([f0be299](https://github.com/instax-dutta/agentloop/commit/f0be299e281850a9a4587fe0bbbd74bbdbb69ada))
+* add held-out-oracle community verifier (roman numeral converter) ([bbef488](https://github.com/instax-dutta/agentloop/commit/bbef4886dd0f849ba79cf6c13d6a9afd1bef9f6a))
+* add property-based community verifier (rpn calculator) ([611d4c1](https://github.com/instax-dutta/agentloop/commit/611d4c10a49c228a625bcc859ed4e5fe50c12e31))
+* check_verifiers verifies the adversarial path (bad-solution must fail) ([e011562](https://github.com/instax-dutta/agentloop/commit/e011562c4b7aea6726738ac8b122a330cf7554f7))
+
+
+### Documentation
+
+* summarize community verifiers in the examples gallery ([7595129](https://github.com/instax-dutta/agentloop/commit/7595129358caee6d63f157783301e6985f965720))
+* mirror EXAMPLES.md community-verifier summaries into the gallery ([891b51e](https://github.com/instax-dutta/agentloop/commit/891b51ebc4b06df25d8dd54e95cb6bccdb528168))
+* changelog entry for community verifiers (4 verifiers, adversarial CI check, gallery docs) ([3a61519](https://github.com/instax-dutta/agentloop/commit/3a61519ea786a78c524e66df73075eb320e40e0d))
+
 ## [0.6.0-dev] — 2026-08-06
 
 ### Added
