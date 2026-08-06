@@ -1,6 +1,7 @@
 # Example Gallery
 
-Ten copy-paste-able verifier samples. Each teaches a different **oracle
+Ten copy-paste-able verifier samples — plus three community-submitted
+verifiers at the bottom. Each teaches a different **oracle
 pattern** — the more patterns you know, the more tasks you can make
 verifiable. Every example has `goal.txt` (the task) and `verify.sh` (the
 oracle) and runs cleanly with:
@@ -124,8 +125,45 @@ See the full list any time with `agentloop --examples`.
 | Builds a service | Integration (HTTP) | `api-endpoint` |
 | Mutates a system | Fixture + post-conditions | `git-history-rewriter` |
 
-Share your own `verify.sh` patterns in the
-[community-verifiers gallery](../community-verifiers/) — a copy-paste-able
-library of community-submitted verifiers with a merge checklist and a tag
-taxonomy (held-out, golden-files, fixture, …). Full contribution rules live
-in [CONTRIBUTING.md](../CONTRIBUTING.md).
+---
+
+## Community verifiers
+
+Community-submitted `verify.sh` patterns — each CI-checked in *both*
+directions: a seeded correct `solution/` must pass, and a seeded incorrect
+`bad-solution/` must fail. Copy any as the template for your own
+contribution.
+
+### `filename-sanitizer` — fixture + post-conditions (`tags: fixture`)
+
+- **Oracle pattern:** builds a realistic directory tree in a temp dir, runs
+  the agent's script against a *copy*, and asserts the exact post-conditions
+  (hidden files untouched, collisions suffixed, deep nesting renamed
+  bottom-up, no spurious files).
+- **What it teaches:** verifying tasks that *mutate* a system — assert the
+  resulting state, don't eyeball the code.
+- **Runtime:** < 5 s · **Cost:** $0.
+
+### `uniq-reimplementation` — behavior-equivalence (`tags: behavior-equivalence`)
+
+- **Oracle pattern:** a seeded RNG generates random line batches (duplicate
+  runs, blank lines, tabs, trailing spaces, unicode) and the candidate's
+  stdout is compared byte-for-byte against a reference — with and without the
+  `-c` count flag.
+- **What it teaches:** reimplementing a CLI — the reference *defines* the
+  spec, so correctness is proven by equivalence, not by example outputs.
+- **Runtime:** < 10 s · **Cost:** $0.
+
+### `roman-numeral-converter` — held-out oracle (`tags: held-out-oracle`)
+
+- **Oracle pattern:** records a sealed reference on ~80 generated inputs
+  (only 3 visible), then grades the candidate on *every* input.
+- **What it teaches:** the anti-overfitting moat — an agent that memorizes
+  the 3 visible cases fails every held-out input, and `grade` reports the
+  exact first divergence back into the loop.
+- **Runtime:** < 15 s · **Cost:** $0 (requires `agentloop-cli`).
+
+Built a verifier worth sharing? Add it to the
+[community-verifiers gallery](../community-verifiers/) — the merge checklist
+and tag taxonomy (held-out, golden-files, fixture, …) live in
+[CONTRIBUTING.md](../CONTRIBUTING.md).
