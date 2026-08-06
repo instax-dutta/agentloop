@@ -2,6 +2,33 @@
 
 All notable changes to AgentLoop are documented here.
 
+## [0.5.0](https://github.com/instax-dutta/agentloop/compare/v0.4.0...v0.5.0) (2026-08-06)
+
+
+### Features
+
+* add seven bundled examples and first community verifier ([38a5809](https://github.com/instax-dutta/agentloop/commit/38a58092077bcd6dc0b451321003edec0104852b))
+* automate releases — GitHub Releases on tags + release-please for auto version bumps ([d7dad42](https://github.com/instax-dutta/agentloop/commit/d7dad42c7576fbc5f58edb37770c5570c476a5db))
+* parallel plan runner, telemetry, structured logging, CLI polish, mypy strict ([e13e73f](https://github.com/instax-dutta/agentloop/commit/e13e73f302c8639fc5b140b8e6a31008df838d59))
+* switch PyPI publishing to Trusted Publishing (OIDC) - no API tokens needed ([fb8e4f9](https://github.com/instax-dutta/agentloop/commit/fb8e4f93f619291ed2e3dec002fd1fce00f9d147))
+
+
+### Bug Fixes
+
+* correct CI badge URL from saiduttaabhishekdash to instax-dutta ([4c10a39](https://github.com/instax-dutta/agentloop/commit/4c10a392f47f0a146b3f96fdfc746a5b32409c67))
+* correct E2E test count from 14 to 13 ([513900a](https://github.com/instax-dutta/agentloop/commit/513900af1a498d7beb8ba7cad09f07736c9cc911))
+* derive __version__ from importlib.metadata so pyproject.toml is single source of truth ([e45278d](https://github.com/instax-dutta/agentloop/commit/e45278dff2b391a64816ac7e39f70b8a3ba1f3b8))
+* remove v-prefix from pip install in release body, document conventional commits ([0bc8571](https://github.com/instax-dutta/agentloop/commit/0bc857104b0fc7a0e064215b3bf6df42cd7cdf1a))
+* skip CI on docs-only changes (README, CHANGELOG, etc.) ([4a52f60](https://github.com/instax-dutta/agentloop/commit/4a52f608b62b399b876979f304853bb1dfd2626c))
+
+
+### Documentation
+
+* add comparison table vs GNHF to README ([10951e4](https://github.com/instax-dutta/agentloop/commit/10951e4fc7dedd066a6a0d0b6c5660ab91175bd1))
+* add comprehensive badges to README (PyPI, downloads, python versions, license) ([5ed5f46](https://github.com/instax-dutta/agentloop/commit/5ed5f46fa12915fcb16101c4911b196768ebd4b6))
+* add E2E testing results table to README ([a508093](https://github.com/instax-dutta/agentloop/commit/a5080937aba037803170c924096aea3662e391e4))
+* documentation site, benchmarks, blog posts, sustainment workflows ([08fcca5](https://github.com/instax-dutta/agentloop/commit/08fcca556a0dd68600fc1128e6482a113c66853f))
+
 ## [0.5.0-dev] — 2026-08-06
 
 ### Added
