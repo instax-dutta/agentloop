@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentloop-cli"
-version = "0.4.0"
+version = "0.5.0.dev0"
 description = "Harness-agnostic, self-verifying autonomy wrapper for coding agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,8 +27,19 @@ dependencies = []
 
 [project.optional-dependencies]
 direct = ["openai>=1.0.0"]
+otlp = [
+  "opentelemetry-api>=1.24.0",
+  "opentelemetry-sdk>=1.24.0",
+  "opentelemetry-exporter-otlp-proto-http>=1.24.0",
+]
+langfuse = ["langfuse>=2.0.0"]
+docs = [
+  "mkdocs>=1.6.0",
+  "mkdocs-material>=9.5.0",
+]
 dev = [
   "ruff>=0.8.0",
+  "mypy>=1.10.0",
   "pre-commit>=4.0.0",
 ]
 
@@ -37,8 +48,10 @@ agentloop = "agentloop:cli"
 agentloop-oracle = "agentloop.oracle:_cli_entry"
 
 [project.urls]
-Homepage = "https://github.com/saiduttaabhishekdash/agentloop"
-Issues = "https://github.com/saiduttaabhishekdash/agentloop/issues"
+Homepage = "https://github.com/instax-dutta/agentloop"
+Issues = "https://github.com/instax-dutta/agentloop/issues"
+Documentation = "https://github.com/instax-dutta/agentloop#readme"
+Changelog = "https://github.com/instax-dutta/agentloop/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
 packages = ["agentloop", "agentloop.data"]
@@ -46,6 +59,18 @@ packages = ["agentloop", "agentloop.data"]
 [tool.setuptools.package-data]
 "agentloop" = ["data/**/*"]
 "agentloop.data" = ["**/*"]
+
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_return_any = true
+check_untyped_defs = true
+no_implicit_optional = true
+files = ["agentloop"]
+exclude = ["agentloop/data"]
 
 
 [tool.ruff]

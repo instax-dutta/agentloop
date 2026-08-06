@@ -36,6 +36,7 @@ import os
 import pathlib
 import random
 import subprocess
+from typing import Any
 
 ROOT = pathlib.Path.cwd()
 ORACLE_SEALED_DIR = ROOT / ".agentloop" / "oracle_sealed"
@@ -86,7 +87,7 @@ def _is_secret_key(key: str) -> bool:
     return False
 
 
-def safe_env(*, for_verify: bool = False) -> dict:
+def safe_env(*, for_verify: bool = False) -> dict[str, str]:
     """Build a scrubbed environment for subprocesses.
 
     - Agent / notify / shell tools: credentials stripped, including ORACLE_SEAL.
@@ -109,7 +110,7 @@ def safe_env(*, for_verify: bool = False) -> dict:
     return e
 
 
-def run_verify(cmd: str, cwd: pathlib.Path, timeout: int | None = None):
+def run_verify(cmd: str, cwd: pathlib.Path, timeout: int | None = None) -> tuple[int, str]:
     """Run the ground-truth verification command. Returns (returncode, output)."""
     cmd = cmd or os.environ.get("VERIFY_CMD", "")
     if not cmd:
@@ -127,7 +128,7 @@ def run_verify(cmd: str, cwd: pathlib.Path, timeout: int | None = None):
         return 1, f"VERIFY ERROR: {e}"
 
 
-def verify_passed(cwd: pathlib.Path):
+def verify_passed(cwd: pathlib.Path) -> tuple[bool, str]:
     """Convenience: returns (bool_passed, output) using VERIFY_CMD from env."""
     cmd = os.environ.get("VERIFY_CMD", "")
     if not cmd:
@@ -136,7 +137,7 @@ def verify_passed(cwd: pathlib.Path):
     return rc == 0, out
 
 
-def _oracle_log(msg: str):
+def _oracle_log(msg: str) -> None:
     """Log without hard-importing agentloop at module load (avoids cycles)."""
     try:
         from agentloop import log as _log
@@ -145,7 +146,7 @@ def _oracle_log(msg: str):
         print(msg, flush=True)
 
 
-def gate_done(messages: list) -> bool:
+def gate_done(messages: list[dict[str, str]]) -> bool:
     """Gate the DONE state (used by direct/OpenAI mode).
 
     Returns True if no verifier is configured, or the verifier passes.
@@ -179,7 +180,7 @@ def _run_program(cmd: str, inp: str, timeout: int = 30) -> str:
         return ""
 
 
-def _seal(held_inputs, held_expected, secret: str) -> str:
+def _seal(held_inputs: list[str], held_expected: list[str], secret: str) -> str:
     h = hashlib.sha256()
     for i, e in zip(held_inputs, held_expected):
         h.update((i + "\n" + e + "\n").encode())
@@ -187,8 +188,8 @@ def _seal(held_inputs, held_expected, secret: str) -> str:
     return h.hexdigest()
 
 
-def record_reference(reference_cmd: str, inputs: list, visible_n: int,
-                     out_path: pathlib.Path, seal_secret: str = "") -> dict:
+def record_reference(reference_cmd: str, inputs: list[str], visible_n: int,
+                     out_path: pathlib.Path, seal_secret: str = "") -> dict[str, Any]:
     """Capture a trusted reference's behaviour into a sealed oracle file.
 
     `inputs`      : list of input strings (one per case).
@@ -222,7 +223,7 @@ def record_reference(reference_cmd: str, inputs: list, visible_n: int,
 
 
 def grade_candidate(candidate_cmd: str, oracle_path: pathlib.Path,
-                    seal_secret: str = "", timeout: int = 30) -> dict:
+                    seal_secret: str = "", timeout: int = 30) -> dict[str, Any]:
     """Grade a CANDIDATE against a sealed oracle.
 
     Runs the candidate on EVERY input (visible + held-out), compares to the
@@ -254,7 +255,7 @@ def grade_candidate(candidate_cmd: str, oracle_path: pathlib.Path,
         got = _run_program(candidate_cmd, inp, timeout=timeout)
         results.append(got == expected[idx])
 
-    def _count(idxs):
+    def _count(idxs: list[int]) -> tuple[int, int]:
         return sum(1 for i in idxs if results[i]), len(idxs)
 
     v_pass, v_tot = _count(visible)
@@ -396,7 +397,7 @@ def _gen_structured(rng: random.Random) -> str:
         return f"{rng.randint(0, 500000)} {rng.choice(['single', 'married_joint'])}"
 
 
-def _cli():
+def _cli() -> int:
     import argparse
     ap = argparse.ArgumentParser(prog="oracle", description="AgentLoop held-out oracle")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -446,7 +447,7 @@ def _cli():
     return 2
 
 
-def _cli_entry():
+def _cli_entry() -> None:
     """Console-script entry point for setuptools."""
     raise SystemExit(_cli())
 

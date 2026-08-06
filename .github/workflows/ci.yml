@@ -48,6 +48,11 @@ jobs:
         run: |
           pip install ruff
           ruff check --output-format=github .
+      - name: Type-check (mypy --strict)
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        run: |
+          pip install mypy
+          mypy --strict agentloop/
       - name: Setup sandbox (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -60,6 +65,18 @@ jobs:
       - name: Loop tests (Linux only — needs bash + mock_agent.sh)
         if: matrix.os == 'ubuntu-latest'
         run: python test_loop.py
+        shell: bash
+      - name: Cost parser tests
+        if: matrix.os == 'ubuntu-latest'
+        run: python test_cost.py
+        shell: bash
+      - name: Parallel DAG tests
+        if: matrix.os == 'ubuntu-latest'
+        run: python test_parallel.py
+        shell: bash
+      - name: Telemetry no-op tests
+        if: matrix.os == 'ubuntu-latest'
+        run: python test_telemetry.py
         shell: bash
       - name: CLI smoke (Linux)
         if: matrix.os == 'ubuntu-latest'

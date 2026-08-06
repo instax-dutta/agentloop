@@ -5,6 +5,8 @@ Proves: agent writes buggy code -> oracle FAILS -> failure fed back ->
 agent retries -> oracle PASSES -> loop stops. No LLM involved.
 """
 import argparse
+import contextlib as _ctx
+import io as _io
 import json
 import os
 import shutil
@@ -41,6 +43,23 @@ def _clean_artifacts():
     for f in (STATE, ROOT / "agentloop.summary.txt",
               ROOT / "agentloop.log", ROOT / "agentloop.pid"):
         f.unlink(missing_ok=True)
+
+
+def _clean_plan_artifacts(tasks: int = 3) -> None:
+    """Remove per-task state/log/pid/summary/goal files and sandbox dirs left
+    behind by parallel plan runs (--run). Safe to call before AND after, so
+    stale artifacts from an earlier crashed run can't break absence assertions."""
+    for n in range(1, tasks + 1):
+        for f in (ROOT / f"agentloop.state.task-{n}.json",
+                  ROOT / f"agentloop.log.task-{n}",
+                  ROOT / f"agentloop.log.task-{n}.json",
+                  ROOT / f"agentloop.pid.task-{n}",
+                  ROOT / f"agentloop.pid.task-{n}.json",
+                  ROOT / f"agentloop.summary.task-{n}",
+                  ROOT / f"agentloop.summary.task-{n}.json",
+                  ROOT / f"goal.task-{n}.txt"):
+            f.unlink(missing_ok=True)
+        shutil.rmtree(ROOT / "sandbox" / f"task-{n}", ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -267,7 +286,267 @@ os.environ["LOG_MAX_MB"] = old_log or "10"
 agentloop.read_config()
 # Reset logger again for subsequent tests
 agentloop._logger_initialized = False
-print("LOG ROTATION TEST: PASS")
+# ---------------------------------------------------------------------------
+# 16. BLOCKED_GOAL_PATTERNS
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+os.environ["BLOCKED_GOAL_PATTERNS"] = "rm -rf:mkfs,dd if="
+try:
+    agentloop._validate_goal("please rm -rf /tmp")
+    assert False, "should exit on blocked goal pattern"
+except SystemExit:
+    pass
+assert agentloop._validate_goal("safe goal") == "safe goal"
+os.environ.pop("BLOCKED_GOAL_PATTERNS", None)
+print("BLOCKED_GOAL_PATTERNS TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 17. DIRECT MODE CONFIG ALIASES & VERSION
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+os.environ["AGENTLOOP_API_KEY"] = "sk-test-key"
+os.environ["AGENTLOOP_BASE_URL"] = "https://custom.api/v1"
+os.environ["AGENTLOOP_MODEL"] = "custom-model"
+agentloop.read_config()
+assert agentloop.API_KEY == "sk-test-key"
+assert agentloop.BASE_URL == "https://custom.api/v1"
+assert agentloop.MODEL == "custom-model"
+
+os.environ.pop("AGENTLOOP_API_KEY", None)
+os.environ.pop("AGENTLOOP_BASE_URL", None)
+os.environ.pop("AGENTLOOP_MODEL", None)
+os.environ["KILO_API_KEY"] = "kilo-test-key"
+agentloop.read_config()
+assert agentloop.API_KEY == "kilo-test-key"
+assert agentloop.BASE_URL == "https://api.openai.com/v1"
+assert agentloop.MODEL == "gpt-4o-mini"
+os.environ.pop("KILO_API_KEY", None)
+agentloop.read_config()
+print("DIRECT MODE CONFIG ALIASES TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 18. CONTAINER ISOLATION FLAGS
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+from agentloop.docker import run_in_docker
+assert callable(run_in_docker)
+os.environ["USE_DOCKER"] = "1"
+agentloop.read_config()
+assert agentloop.USE_DOCKER is True
+os.environ.pop("USE_DOCKER", None)
+
+os.environ["USE_PODMAN"] = "1"
+agentloop.read_config()
+assert agentloop.USE_PODMAN is True
+os.environ.pop("USE_PODMAN", None)
+agentloop.read_config()
+print("CONTAINER ISOLATION FLAGS TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 19. CMD_COST SUBCOMMAND
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+STATE.write_text(json.dumps({
+    "goal": "cost test", "mode": "cli", "iter": 1, "status": "completed",
+    "running_cost": 0.05,
+    "cost_breakdown": {
+        "running_cost": 0.05, "iterations": 1,
+        "by_iter": [{"iter": 1, "preset": "claude", "model": "claude-3-7-sonnet", "cost": 0.05, "input_tokens": 1000, "output_tokens": 500, "is_estimated": False}]
+    }
+}))
+rc_cost = agentloop.cmd_cost(argparse.Namespace())
+assert rc_cost == 0
+print("CMD_COST SUBCOMMAND TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 20. LOG_JSON STRUCTURED LOGGING
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+agentloop._logger_initialized = False
+old_log_json = os.environ.get("LOG_JSON", "")
+os.environ["LOG_JSON"] = "true"
+agentloop.read_config()
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    agentloop.log("json test message")
+_rec = json.loads(_buf.getvalue().strip())
+assert _rec["msg"] == "json test message"
+assert "ts" in _rec and _rec["level"] == "info"
+os.environ["LOG_JSON"] = old_log_json
+agentloop.read_config()
+agentloop._logger_initialized = False
+print("LOG_JSON STRUCTURED LOGGING TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 21. CMD_EXAMPLES SUBCOMMAND
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+_buf = _io.StringIO()
+with _ctx.redirect_stdout(_buf):
+    rc_ex = agentloop.cmd_examples(argparse.Namespace())
+assert rc_ex == 0
+_out = _buf.getvalue()
+assert "json-linter" in _out
+assert "regex-engine" in _out
+assert "api-endpoint" in _out
+print("CMD_EXAMPLES SUBCOMMAND TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 22. CMD_DOCTOR SUBCOMMAND
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+old_vcmd = os.environ.get("VERIFY_CMD", "")
+os.environ["VERIFY_CMD"] = "true"
+rc_doc_ok = agentloop.cmd_doctor(argparse.Namespace(goal=None))
+assert rc_doc_ok == 0, f"doctor should be healthy with a verifier set, got rc={rc_doc_ok}"
+os.environ["VERIFY_CMD"] = ""
+rc_doc_bad = agentloop.cmd_doctor(argparse.Namespace(goal=None))
+assert rc_doc_bad != 0, "doctor should flag a missing verifier"
+os.environ["VERIFY_CMD"] = old_vcmd
+print("CMD_DOCTOR SUBCOMMAND TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 23. COST-AWARE PROMPT BUDGET INJECTION
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+old_max = os.environ.get("MAX_COST_USD", "")
+old_est = os.environ.get("ESTIMATED_COST_PER_ITER", "")
+os.environ["MAX_COST_USD"] = "1.0"
+os.environ["ESTIMATED_COST_PER_ITER"] = "0.10"
+agentloop.read_config()
+p_crit = agentloop.build_prompt("goal", [], remaining_budget=0.05)
+assert "BUDGET CRITICAL" in p_crit, "budget-critical prompt should fire near the cap"
+p_ok = agentloop.build_prompt("goal", [], remaining_budget=5.0)
+assert "BUDGET CRITICAL" not in p_ok
+os.environ["MAX_COST_USD"] = old_max or "0"
+os.environ["ESTIMATED_COST_PER_ITER"] = old_est or "0.10"
+agentloop.read_config()
+print("COST-AWARE PROMPT BUDGET TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 24. PARALLEL PLAN RUNNER (--run with --workers, DAG-aware)
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+_plan = ROOT / "test_plan.md"
+_plan.write_text(textwrap.dedent("""\
+    # Test plan
+    - [ ] Task alpha
+    - [ ] Task beta (after: #1)
+"""))
+old_v2 = os.environ.get("VERIFY_CMD", "")
+os.environ["VERIFY_CMD"] = "true"
+rc_plan = agentloop.cmd_run_plan(argparse.Namespace(
+    run=str(_plan), verify="true", harness=None, agent_cmd=None,
+    workers=2, timeout=90))
+assert rc_plan == 0, f"parallel plan should pass with a trivial verifier, got rc={rc_plan}"
+assert (ROOT / "agentloop.state.task-1.json").exists(), "task-1 state file should exist"
+assert (ROOT / "agentloop.state.task-2.json").exists(), "task-2 state file should exist"
+assert (ROOT / "sandbox" / "task-1").is_dir(), "task-1 sandbox should exist"
+_plan.unlink(missing_ok=True)
+_clean_plan_artifacts(2)
+os.environ["VERIFY_CMD"] = old_v2
+print("PARALLEL PLAN RUNNER TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 25. COST_BREAKDOWN PERSISTENCE (survives mid-loop saves AND finish())
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+_clean_sandbox()
+agentloop.run_cli_mode("build a tax calculator (mock test)")
+_state = json.loads(STATE.read_text())
+_cb = _state.get("cost_breakdown", {})
+assert isinstance(_cb, dict) and _cb.get("by_iter"), \
+    "cost_breakdown must persist after finish()"
+assert _state.get("status") == "completed"
+assert len(_cb["by_iter"]) >= 1, "by_iter should record at least one iteration"
+print("COST_BREAKDOWN PERSISTENCE TEST: PASS")
+
+# ---------------------------------------------------------------------------
+# 26. --serve COST BREAKDOWN CARD (start server, GET /, assert the cost bars)
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+STATE.write_text(json.dumps({
+    "goal": "serve test", "mode": "cli", "iter": 3, "status": "running",
+    "running_cost": 0.15,
+    "cost_breakdown": {
+        "running_cost": 0.15, "iterations": 3,
+        "by_iter": [
+            {"iter": 1, "model": "claude-3-7-sonnet", "cost": 0.05,
+             "input_tokens": 1000, "output_tokens": 500, "is_estimated": False},
+            {"iter": 2, "model": "claude-3-7-sonnet", "cost": 0.08,
+             "input_tokens": 1200, "output_tokens": 600, "is_estimated": False},
+            {"iter": 3, "model": "gpt-4o-mini", "cost": 0.02,
+             "input_tokens": 800, "output_tokens": 200, "is_estimated": True},
+        ],
+    },
+}))
+import threading as _th
+import urllib.request as _urlreq
+_srv = agentloop.HTTPServer(("127.0.0.1", 0), agentloop._MonitorHandler)
+_port = _srv.server_address[1]
+_thr = _th.Thread(target=_srv.serve_forever, daemon=True)
+_thr.start()
+try:
+    with _urlreq.urlopen(f"http://127.0.0.1:{_port}/", timeout=10) as _resp:
+        assert _resp.status == 200, f"GET / should return 200, got {_resp.status}"
+        _html = _resp.read().decode("utf-8")
+finally:
+    _srv.shutdown()
+    _srv.server_close()
+    _thr.join(timeout=5)
+
+# The cost breakdown card + one CSS bar per iteration must be present.
+assert "Cost Breakdown" in _html, "HTML should include the Cost Breakdown card"
+assert _html.count("class='bar-row'") == 3, "one bar-row per iteration expected"
+assert _html.count("class='bar-fill'") == 3, "one bar-fill per iteration expected"
+assert "width:100%" in _html, "the largest iteration cost should render a full-width bar"
+for _label in ("iter 1", "iter 2", "iter 3"):
+    assert _label in _html, f"missing bar label {_label!r}"
+for _model in ("claude-3-7-sonnet", "gpt-4o-mini"):
+    assert _model in _html, f"missing model in By-model breakdown: {_model!r}"
+assert "$0.0800" in _html, "per-iteration costs should be shown next to the bars"
+assert "(est)" in _html, "estimated iterations should be flagged"
+# The direct render helper must agree with what the server actually serves.
+_page = agentloop._render_status_page()
+assert "Cost Breakdown" in _page and "class='bar-fill'" in _page
+print("SERVE COST BREAKDOWN CARD TEST: PASS (HTTP GET /)")
+
+# ---------------------------------------------------------------------------
+# 27. PARALLEL PLAN: DOWNSTREAM TASKS SKIPPED WHEN A DEPENDENCY FAILS
+# ---------------------------------------------------------------------------
+_clean_artifacts()
+_clean_plan_artifacts(3)  # clear stale task files first so absence asserts are sound
+_plan_fail = ROOT / "test_plan_fail.md"
+_plan_fail.write_text(textwrap.dedent("""\
+    # Test plan
+    - [ ] Task alpha
+    - [ ] Task beta (after: #1)
+    - [ ] Task gamma (after: #2)
+"""))
+_buf27 = _io.StringIO()
+with _ctx.redirect_stdout(_buf27):
+    rc_fail = agentloop.cmd_run_plan(argparse.Namespace(
+        run=str(_plan_fail), verify="false", harness=None, agent_cmd=None,
+        workers=3, timeout=180))
+_out27 = _buf27.getvalue()
+assert rc_fail != 0, "a plan with a failing dependency must not exit 0"
+assert "❌ [FAILED] Task 1:" in _out27, "task 1 should run and fail"
+assert "⏭️ [SKIPPED] Task 2:" in _out27, "task 2 must be skipped (depends on failed #1)"
+assert "⏭️ [SKIPPED] Task 3:" in _out27, "task 3 must be skipped transitively (depends on #2)"
+# Task 1 actually ran to failure: state file + sandbox exist. With verify="false"
+# and MAX_ITERS=5 (set at import), task 1 burns all iterations -> status exhausted.
+_t1_state = json.loads((ROOT / "agentloop.state.task-1.json").read_text())
+assert _t1_state.get("status") == "exhausted", "task 1 should have run to exhaustion"
+assert (ROOT / "sandbox" / "task-1").is_dir(), "task 1 sandbox should exist"
+# Downstream tasks must NEVER have started: no state file, no sandbox dir
+for _tid in ("task-2", "task-3"):
+    assert not (ROOT / f"agentloop.state.{_tid}.json").exists(), \
+        f"{_tid} must be skipped, not run (state file must not exist)"
+    assert not (ROOT / "sandbox" / _tid).exists(), \
+        f"{_tid} must be skipped, not run (sandbox must not exist)"
+_plan_fail.unlink(missing_ok=True)
+_clean_plan_artifacts(3)
+print("PARALLEL PLAN DEPENDENCY-SKIP TEST: PASS")
 
 # ---------------------------------------------------------------------------
 # CLEANUP

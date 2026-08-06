@@ -35,16 +35,33 @@ import tempfile
 import textwrap
 import time
 import urllib.request
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from logging.handlers import RotatingFileHandler
+from typing import Any
 
+from .cost import CostTracker, parse_harness_output
+from .docker import run_in_docker
 from .oracle import DATA_DIR, ROOT, gate_done, run_verify, safe_env, verify_passed
+from .parallel import TaskNode, parse_plan_dag, run_plan_parallel
+from .telemetry import LangfuseExporter, TelemetryExporter, is_any_telemetry_enabled
+
+# ---- telemetry (optional; no-op when unconfigured) --------------------------
+_telemetry = TelemetryExporter()
+_langfuse = LangfuseExporter()
+
+
+def _goal_hash(goal: str) -> str:
+    """Short stable hash of the goal for telemetry attributes."""
+    import hashlib
+
+    return hashlib.sha256(goal.encode()).hexdigest()[:12]
 
 try:
     from importlib.metadata import version as _v
     __version__ = _v("agentloop-cli")
 except Exception:
-    __version__ = "0.4.0"
+    __version__ = "0.5.0.dev0"
 
 # Process exit codes for scripting / CI
 EXIT_COMPLETED = 0
@@ -79,13 +96,20 @@ def load_env() -> None:
 load_env()  # must run before the config block below reads env vars
 
 # ---- paths -----------------------------------------------------------------
-SANDBOX = ROOT / "sandbox"
-GOAL_FILE = ROOT / "goal.txt"
-STOP_FILE = ROOT / "STOP"
-PID_FILE = ROOT / "agentloop.pid"
-LOG_FILE = ROOT / "agentloop.log"
-STATE_FILE = ROOT / "agentloop.state.json"
-SUMMARY_FILE = ROOT / "agentloop.summary.txt"
+# All paths are overridable via env vars so parallel multi-agent workers can
+# keep per-task sandboxes and namespaced state/log/pid files.
+def _env_path(name: str, default: pathlib.Path) -> pathlib.Path:
+    val = os.environ.get(name, "")
+    return pathlib.Path(val).expanduser() if val else default
+
+
+SANDBOX = _env_path("AGENTLOOP_SANDBOX", ROOT / "sandbox")
+GOAL_FILE = _env_path("AGENTLOOP_GOAL_FILE", ROOT / "goal.txt")
+STOP_FILE = _env_path("AGENTLOOP_STOP_FILE", ROOT / "STOP")
+PID_FILE = _env_path("AGENTLOOP_PID_FILE", ROOT / "agentloop.pid")
+LOG_FILE = _env_path("AGENTLOOP_LOG_FILE", ROOT / "agentloop.log")
+STATE_FILE = _env_path("AGENTLOOP_STATE_FILE", ROOT / "agentloop.state.json")
+SUMMARY_FILE = _env_path("AGENTLOOP_SUMMARY_FILE", ROOT / "agentloop.summary.txt")
 
 # ---- config (env-overridable) ----------------------------------------------
 AGENT_MODE = os.environ.get("AGENT_MODE", "cli").lower()
@@ -95,6 +119,8 @@ MAX_ITERS = int(os.environ.get("MAX_ITERS", "50"))
 WALL_CLOCK_SEC = int(os.environ.get("WALL_CLOCK_SEC", str(6 * 3600)))
 STEP_DELAY = float(os.environ.get("STEP_DELAY", "3"))
 AGENT_TIMEOUT = int(os.environ.get("AGENT_TIMEOUT", "900"))
+USE_DOCKER = os.environ.get("USE_DOCKER", "").lower() in ("1", "true", "yes")
+USE_PODMAN = os.environ.get("USE_PODMAN", "").lower() in ("1", "true", "yes")
 
 # --- cost cap ---------------------------------------------------------------
 MAX_COST_USD = float(os.environ.get("MAX_COST_USD", "0"))
@@ -102,6 +128,7 @@ ESTIMATED_COST_PER_ITER = float(os.environ.get("ESTIMATED_COST_PER_ITER", "0.10"
 
 # --- logging ----------------------------------------------------------------
 LOG_MAX_MB = int(os.environ.get("LOG_MAX_MB", "10"))
+LOG_JSON = os.environ.get("LOG_JSON", "").lower() in ("1", "true", "yes")
 
 # --- notifications ----------------------------------------------------------
 NOTIFY_TELEGRAM_BOT_TOKEN = os.environ.get("NOTIFY_TELEGRAM_BOT_TOKEN", "")
@@ -109,10 +136,30 @@ NOTIFY_TELEGRAM_CHAT_ID = os.environ.get("NOTIFY_TELEGRAM_CHAT_ID", "")
 NOTIFY_DISCORD_WEBHOOK_URL = os.environ.get("NOTIFY_DISCORD_WEBHOOK_URL", "")
 NOTIFY_SLACK_WEBHOOK_URL = os.environ.get("NOTIFY_SLACK_WEBHOOK_URL", "")
 
+
+def _get_direct_config() -> tuple[str | None, str, str]:
+    api_key = os.environ.get("AGENTLOOP_API_KEY")
+    if not api_key:
+        api_key = os.environ.get("KILO_API_KEY") or os.environ.get("KILOCODE_API_KEY")
+        if api_key:
+            logging.getLogger("agentloop").warning(
+                "KILO_API_KEY/KILOCODE_API_KEY is deprecated; use AGENTLOOP_API_KEY instead."
+            )
+    base_url = (
+        os.environ.get("AGENTLOOP_BASE_URL")
+        or os.environ.get("KILO_BASE_URL")
+        or "https://api.openai.com/v1"
+    )
+    model = (
+        os.environ.get("AGENTLOOP_MODEL")
+        or os.environ.get("KILO_MODEL")
+        or "gpt-4o-mini"
+    )
+    return api_key, base_url, model
+
+
 # direct-mode (legacy) config
-API_KEY = os.environ.get("KILO_API_KEY") or os.environ.get("KILOCODE_API_KEY")
-BASE_URL = os.environ.get("KILO_BASE_URL", "https://api.kilo.ai/api/gateway")
-MODEL = os.environ.get("KILO_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
+API_KEY, BASE_URL, MODEL = _get_direct_config()
 DIRECT_MAX_STEPS = int(os.environ.get("MAX_STEPS", "300"))
 DIRECT_MSG_CAP = int(os.environ.get("MSG_CAP", "120"))
 
@@ -191,14 +238,30 @@ def _init_logger() -> None:
     _logger_initialized = True
 
 
+def _to_float(val: Any, default: float = 0.0) -> float:
+    """Coerce a state-file value to float without crashing on bad data."""
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def log(msg: str) -> None:
-    """Log a timestamped line to both the rotating log file and stdout."""
+    """Log a timestamped line to both the rotating log file and stdout.
+
+    When LOG_JSON=true, emit a single JSON line per record so logs can be
+    ingested by Loki / Elastic / CloudWatch / jq.
+    """
     global _logger_initialized
     if not _logger_initialized:
         _init_logger()
     ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{ts}] {msg}"
-    print(line, flush=True)
+    if LOG_JSON:
+        record = json.dumps({"ts": ts, "level": "info", "msg": msg}, ensure_ascii=False)
+        print(record, flush=True)
+    else:
+        line = f"[{ts}] {msg}"
+        print(line, flush=True)
     try:
         logging.getLogger("agentloop").info(msg)
     except Exception:
@@ -359,7 +422,8 @@ def read_config() -> None:
         STEP_DELAY, AGENT_TIMEOUT, DIRECT_MAX_STEPS, DIRECT_MSG_CAP, API_KEY, \
         BASE_URL, MODEL, MAX_COST_USD, ESTIMATED_COST_PER_ITER, LOG_MAX_MB, \
         NOTIFY_TELEGRAM_BOT_TOKEN, NOTIFY_TELEGRAM_CHAT_ID, \
-        NOTIFY_DISCORD_WEBHOOK_URL, NOTIFY_SLACK_WEBHOOK_URL
+        NOTIFY_DISCORD_WEBHOOK_URL, NOTIFY_SLACK_WEBHOOK_URL, USE_DOCKER, USE_PODMAN, \
+        LOG_JSON
     AGENT_MODE = os.environ.get("AGENT_MODE", "cli").lower()
     AGENT_PRESET = os.environ.get("AGENT_PRESET", "")
     AGENT_CMD = os.environ.get("AGENT_CMD", "")
@@ -367,29 +431,31 @@ def read_config() -> None:
     WALL_CLOCK_SEC = int(os.environ.get("WALL_CLOCK_SEC", str(6 * 3600)))
     STEP_DELAY = float(os.environ.get("STEP_DELAY", "3"))
     AGENT_TIMEOUT = int(os.environ.get("AGENT_TIMEOUT", "900"))
+    USE_DOCKER = os.environ.get("USE_DOCKER", "").lower() in ("1", "true", "yes")
+    USE_PODMAN = os.environ.get("USE_PODMAN", "").lower() in ("1", "true", "yes")
     MAX_COST_USD = float(os.environ.get("MAX_COST_USD", "0"))
     ESTIMATED_COST_PER_ITER = float(os.environ.get("ESTIMATED_COST_PER_ITER", "0.10"))
     LOG_MAX_MB = int(os.environ.get("LOG_MAX_MB", "10"))
+    LOG_JSON = os.environ.get("LOG_JSON", "").lower() in ("1", "true", "yes")
     NOTIFY_TELEGRAM_BOT_TOKEN = os.environ.get("NOTIFY_TELEGRAM_BOT_TOKEN", "")
     NOTIFY_TELEGRAM_CHAT_ID = os.environ.get("NOTIFY_TELEGRAM_CHAT_ID", "")
     NOTIFY_DISCORD_WEBHOOK_URL = os.environ.get("NOTIFY_DISCORD_WEBHOOK_URL", "")
     NOTIFY_SLACK_WEBHOOK_URL = os.environ.get("NOTIFY_SLACK_WEBHOOK_URL", "")
     DIRECT_MAX_STEPS = int(os.environ.get("MAX_STEPS", "300"))
     DIRECT_MSG_CAP = int(os.environ.get("MSG_CAP", "120"))
-    API_KEY = os.environ.get("KILO_API_KEY") or os.environ.get("KILOCODE_API_KEY")
-    BASE_URL = os.environ.get("KILO_BASE_URL", "https://api.kilo.ai/api/gateway")
-    MODEL = os.environ.get("KILO_MODEL", "nvidia/nemotron-3-super-120b-a12b:free")
+    API_KEY, BASE_URL, MODEL = _get_direct_config()
 
 
 # ---- run state (crash-safe resume) -----------------------------------------
-def load_state() -> dict:
+def load_state() -> dict[str, Any]:
     try:
-        return json.loads(STATE_FILE.read_text())
+        data = json.loads(STATE_FILE.read_text())
+        return data if isinstance(data, dict) else {}
     except Exception:
         return {}
 
 
-def save_state(state: dict) -> None:
+def save_state(state: dict[str, Any]) -> None:
     try:
         atomic_write(STATE_FILE, json.dumps(state, indent=2) + "\n")
     except Exception as e:
@@ -411,17 +477,23 @@ def write_summary(status: str, iters: int, started_at: float, goal: str, running
 def finish(status: str, iters: int, started_at: float, goal: str, it_next: int, running_cost: float = 0) -> None:
     """Mark a terminal run state, write the summary, and notify."""
     _last_status["status"] = status
-    save_state({
+    prev = load_state()
+    state: dict[str, Any] = {
         "goal": goal, "mode": AGENT_MODE, "iter": it_next,
         "feedback": [], "started_at": started_at, "status": status,
         "running_cost": running_cost,
-    })
+    }
+    # Preserve the cost breakdown so --cost / --status / the web UI can show
+    # the per-iteration history after the run finishes.
+    if isinstance(prev.get("cost_breakdown"), dict):
+        state["cost_breakdown"] = prev["cost_breakdown"]
+    save_state(state)
     write_summary(status, iters, started_at, goal, running_cost)
 
 
 def _install_signal_handlers() -> None:
     """On SIGTERM/SIGINT, create STOP so the loop exits cleanly with a summary."""
-    def _handler(signum, _frame) -> None:
+    def _handler(signum: int, _frame: Any) -> None:
         try:
             STOP_FILE.write_text("")
         except Exception:
@@ -439,12 +511,24 @@ def _install_signal_handlers() -> None:
 def _validate_goal(goal: str) -> str:
     """Validate and sanitize the goal string."""
     if not goal or not goal.strip():
-        log("ERROR: goal is empty. Set a goal in goal.txt or pass it as an argument.")
+        log("ERROR: goal is empty. Fix: pass a goal argument (e.g. `agentloop 'build a linter'`), "
+            "write one to goal.txt, or run `agentloop --init` to scaffold a starter goal.")
         sys.exit(EXIT_CONFIG)
     goal = goal.strip()
     if len(goal) > 10000:
         log("WARNING: goal exceeds 10000 characters, truncating.")
         goal = goal[:10000]
+
+    blocked_env = os.environ.get("BLOCKED_GOAL_PATTERNS", "").strip()
+    if blocked_env:
+        patterns = [p.strip() for item in blocked_env.split(":") for p in item.split(",") if p.strip()]
+        for pat in patterns:
+            if pat.lower() in goal.lower():
+                log(f"ERROR: goal contains blocked pattern: {pat!r}. "
+                    "Fix: remove the pattern from your goal, or unset BLOCKED_GOAL_PATTERNS in .env "
+                    "if this block is not intended.")
+                sys.exit(EXIT_CONFIG)
+
     # Warn about potentially dangerous content
     dangerous = ["rm -rf", "sudo ", "chmod 777", "> /dev/sda"]
     for d in dangerous:
@@ -456,29 +540,29 @@ def _validate_goal(goal: str) -> str:
 def _validate_config() -> None:
     """Validate runtime configuration values."""
     if MAX_ITERS < 1:
-        log("ERROR: MAX_ITERS must be >= 1")
+        log("ERROR: MAX_ITERS must be >= 1. Fix: set MAX_ITERS=50 (or any value >= 1) in .env.")
         sys.exit(EXIT_CONFIG)
     if WALL_CLOCK_SEC < 1:
-        log("ERROR: WALL_CLOCK_SEC must be >= 1")
+        log("ERROR: WALL_CLOCK_SEC must be >= 1. Fix: set WALL_CLOCK_SEC=21600 in .env.")
         sys.exit(EXIT_CONFIG)
     if STEP_DELAY < 0:
-        log("ERROR: STEP_DELAY must be >= 0")
+        log("ERROR: STEP_DELAY must be >= 0. Fix: set STEP_DELAY=3 in .env.")
         sys.exit(EXIT_CONFIG)
     if AGENT_TIMEOUT < 1:
-        log("ERROR: AGENT_TIMEOUT must be >= 1")
+        log("ERROR: AGENT_TIMEOUT must be >= 1. Fix: set AGENT_TIMEOUT=900 in .env.")
         sys.exit(EXIT_CONFIG)
     if MAX_COST_USD < 0:
-        log("ERROR: MAX_COST_USD must be >= 0")
+        log("ERROR: MAX_COST_USD must be >= 0. Fix: set MAX_COST_USD=5.0 or unset it in .env.")
         sys.exit(EXIT_CONFIG)
     if LOG_MAX_MB < 1:
-        log("ERROR: LOG_MAX_MB must be >= 1")
+        log("ERROR: LOG_MAX_MB must be >= 1. Fix: set LOG_MAX_MB=10 in .env.")
         sys.exit(EXIT_CONFIG)
 
 
 # ============================================================================
 # CLI MODE — drive an external coding-agent CLI in a verify/retry loop
 # ============================================================================
-def build_prompt(goal: str, feedback: list, cost_info: str = "") -> str:
+def build_prompt(goal: str, feedback: list[str], cost_info: str = "", remaining_budget: float = -1.0) -> str:
     p = (
         "You are a coding agent working AUTONOMOUSLY. There is NO human in the loop — "
         "never ask for clarification or confirmation; just act.\n"
@@ -486,7 +570,10 @@ def build_prompt(goal: str, feedback: list, cost_info: str = "") -> str:
         "Work ONLY inside the current working directory (the sandbox). Use your tools to "
         "implement and test the goal. Do NOT modify any verify/check script outside the sandbox.\n"
     )
-    if cost_info:
+    if MAX_COST_USD > 0 and remaining_budget >= 0 and remaining_budget < ESTIMATED_COST_PER_ITER * 2:
+        p += (f"\nBUDGET CRITICAL: ${remaining_budget:.2f} remaining. "
+              "Aim for minimal, surgical changes. Do not regenerate large files.\n")
+    elif cost_info:
         p += f"Note: {cost_info}\n"
     if feedback:
         p += ("YOUR PREVIOUS ATTEMPT FAILED VERIFICATION:\n"
@@ -515,52 +602,78 @@ def run_cli_mode(goal: str) -> str:
         feedback = list(prev.get("feedback", []))
         started_at = prev.get("started_at", time.time())
         running_cost = prev.get("running_cost", 0.0)
+        cost_tracker = CostTracker.from_dict(prev.get("cost_breakdown", {}))
         log(f"resuming from iter {it_start} (cost so far: ${running_cost:.2f})")
     else:
         it_start = 1
         feedback = []
         started_at = time.time()
         running_cost = 0.0
+        cost_tracker = CostTracker()
 
     save_state({
         "goal": goal, "mode": "cli", "iter": it_start,
         "feedback": feedback, "started_at": started_at, "status": "running",
         "running_cost": running_cost,
+        "cost_breakdown": cost_tracker.to_dict(),
     })
 
     ran = 0
+
+    def _end_iter(outcome: str) -> None:
+        """Close the telemetry span for the current iteration."""
+        _telemetry.record_event("iteration.end", {"outcome": outcome})
+        _telemetry.finish_span()
+
     for it in range(it_start, MAX_ITERS + 1):
         ran += 1
+
+        # --- telemetry span for this iteration ---
+        _telemetry.start_span(f"agentloop.iter.{it}", {
+            "iter": str(it),
+            "preset": AGENT_PRESET or resolve_agent_cmd(),
+            "goal_hash": _goal_hash(goal),
+            "mode": "cli",
+        })
 
         # --- STOP file check ---
         if STOP_FILE.exists():
             log("STOP file detected — halting.")
+            _end_iter("stopped")
             finish("stopped", ran, started_at, goal, it + 1, running_cost)
             return "stopped"
 
         # --- Wall-clock check (absolute from run start, survives resume) ---
         if time.time() - started_at > WALL_CLOCK_SEC:
             log("wall-clock limit reached — halting.")
+            _end_iter("timeout")
             finish("timeout", ran, started_at, goal, it + 1, running_cost)
             return "timeout"
 
         # --- Cost cap check ---
         if MAX_COST_USD > 0 and running_cost > MAX_COST_USD:
             log(f"cost cap exceeded (${running_cost:.2f} > ${MAX_COST_USD:.2f}) — halting.")
+            _end_iter("over-budget")
             finish("over-budget", ran, started_at, goal, it + 1, running_cost)
             return "over-budget"
 
         cost_info = ""
+        remaining = MAX_COST_USD - running_cost if MAX_COST_USD > 0 else -1.0
         if MAX_COST_USD > 0:
-            remaining = MAX_COST_USD - running_cost
+            if it == it_start:
+                log("WARN: cost in CLI mode is estimated at "
+                    f"${ESTIMATED_COST_PER_ITER:.2f}/iter — direct mode tracks real token usage")
             cost_info = f"running cost ${running_cost:.2f}, remaining budget ${remaining:.2f}"
 
-        prompt = build_prompt(goal, feedback, cost_info)
+        prompt = build_prompt(goal, feedback, cost_info, remaining_budget=remaining)
         env = safe_env()
         env["AGENTLOOP_PROMPT"] = prompt
         try:
-            r = subprocess.run(cmd, shell=True, cwd=str(SANDBOX), env=env,
-                               capture_output=True, text=True, timeout=AGENT_TIMEOUT)
+            if USE_DOCKER or USE_PODMAN:
+                r = run_in_docker(cmd, SANDBOX, env=env, timeout=AGENT_TIMEOUT, podman=USE_PODMAN)
+            else:
+                r = subprocess.run(cmd, shell=True, cwd=str(SANDBOX), env=env,
+                                   capture_output=True, text=True, timeout=AGENT_TIMEOUT)
             rc_agent = r.returncode
             out = (r.stdout or "") + (r.stderr or "")
         except subprocess.TimeoutExpired:
@@ -570,17 +683,39 @@ def run_cli_mode(goal: str) -> str:
 
         log(f"iter {it}: agent exit={rc_agent} -> {out[:200]!r}")
 
-        # Estimate cost (rough: each iteration = 1 agent invocation)
-        if MAX_COST_USD > 0:
-            running_cost += ESTIMATED_COST_PER_ITER
+        # Cost tracking
+        parsed_usage = parse_harness_output(AGENT_PRESET or resolve_agent_cmd(), out)
+        if parsed_usage:
+            in_tok, out_tok, m_name = parsed_usage
+            iter_data = cost_tracker.record_iteration(
+                iter_num=it,
+                preset=AGENT_PRESET or resolve_agent_cmd(),
+                input_tokens=in_tok,
+                output_tokens=out_tok,
+                model_name=m_name,
+                estimated_fallback_cost=ESTIMATED_COST_PER_ITER,
+            )
+            running_cost = cost_tracker.running_cost
+            log(f"iter {it}: cost ${iter_data['cost']:.4f} "
+                f"(input={in_tok} tok, output={out_tok} tok, model={iter_data['model']})")
+        else:
+            iter_data = cost_tracker.record_iteration(
+                iter_num=it,
+                preset=AGENT_PRESET or resolve_agent_cmd(),
+                estimated_fallback_cost=ESTIMATED_COST_PER_ITER,
+            )
+            running_cost = cost_tracker.running_cost
 
         git_checkpoint(SANDBOX, f"iter {it}")
 
+        verify_passed_bool: bool | None = None
         if os.environ.get("VERIFY_CMD"):
             passed, vout = verify_passed(ROOT)
+            verify_passed_bool = passed
             if passed:
                 log(f"iter {it}: VERIFICATION PASSED — task complete.")
                 print_final(SANDBOX)
+                _end_iter("completed")
                 finish("completed", ran, started_at, goal, it + 1, running_cost)
                 return "completed"
             log(f"iter {it}: VERIFICATION FAILED — feeding results back to agent.")
@@ -589,18 +724,26 @@ def run_cli_mode(goal: str) -> str:
         else:
             if terminal_token(out, "BLOCKED"):
                 log("agent reported BLOCKED.")
+                _end_iter("blocked")
                 finish("blocked", ran, started_at, goal, it + 1, running_cost)
                 return "blocked"
             if terminal_token(out, "DONE"):
                 log("agent reported DONE (no verifier configured).")
+                _end_iter("completed")
                 finish("completed", ran, started_at, goal, it + 1, running_cost)
                 return "completed"
 
+        _telemetry.record_event("iteration.result", {
+            "verify_passed": str(bool(verify_passed_bool)),
+            "agent_exit": str(rc_agent),
+        })
         save_state({
             "goal": goal, "mode": "cli", "iter": it + 1,
             "feedback": feedback, "started_at": started_at, "status": "running",
             "running_cost": running_cost,
+            "cost_breakdown": cost_tracker.to_dict(),
         })
+        _end_iter("retry")
         time.sleep(STEP_DELAY)
 
     finish("exhausted", ran, started_at, goal, MAX_ITERS + 1, running_cost)
@@ -612,11 +755,11 @@ def run_cli_mode(goal: str) -> str:
 # ============================================================================
 def run_direct_mode(goal: str) -> str:
     if not API_KEY:
-        log("ERROR: direct mode needs KILO_API_KEY (or KILOCODE_API_KEY). "
-            "Set it in .env, or use AGENT_MODE=cli with a real harness.")
+        log("ERROR: direct mode needs AGENTLOOP_API_KEY (legacy KILO_API_KEY also works). "
+            "Fix: add AGENTLOOP_API_KEY=sk-... to .env, or switch to AGENT_MODE=cli with a real harness.")
         sys.exit(EXIT_CONFIG)
     try:
-        from openai import OpenAI
+        from openai import OpenAI  # type: ignore[import-not-found]
     except ImportError:
         log("ERROR: direct mode requires the openai package. "
             "Install with:  pip install 'agentloop[direct]'  or  pip install openai")
@@ -682,8 +825,8 @@ def run_direct_mode(goal: str) -> str:
             "description": "List a sandbox directory (default: current).",
             "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}},
     ]
-    dispatch = {"run_shell": run_shell, "write_file": write_file,
-                 "read_file": read_file, "list_dir": list_dir}
+    dispatch: dict[str, Callable[..., str]] = {"run_shell": run_shell, "write_file": write_file,
+                                                 "read_file": read_file, "list_dir": list_dir}
 
     ensure_sandbox_git(SANDBOX)
     messages = [{
@@ -707,17 +850,26 @@ def run_direct_mode(goal: str) -> str:
     running_cost = 0.0
 
     for step in range(1, DIRECT_MAX_STEPS + 1):
+        _telemetry.start_span(f"agentloop.step.{step}", {
+            "iter": str(step),
+            "preset": "direct",
+            "goal_hash": _goal_hash(goal),
+            "mode": "direct",
+        })
         if STOP_FILE.exists():
             log("STOP file detected — halting.")
             status = "stopped"
+            _telemetry.finish_span()
             break
         if time.time() - start > WALL_CLOCK_SEC:
             log("wall-clock limit reached — halting.")
             status = "timeout"
+            _telemetry.finish_span()
             break
         if MAX_COST_USD > 0 and running_cost > MAX_COST_USD:
             log(f"cost cap exceeded (${running_cost:.2f} > ${MAX_COST_USD:.2f}) — halting.")
             status = "over-budget"
+            _telemetry.finish_span()
             break
 
         if len(messages) > DIRECT_MSG_CAP + 2:
@@ -728,6 +880,7 @@ def run_direct_mode(goal: str) -> str:
             r = client.chat.completions.create(model=MODEL, messages=messages, tools=tools)
             delay = STEP_DELAY
         except Exception as e:
+            _telemetry.finish_span()
             if "429" in str(e) or "rate" in str(e).lower():
                 delay = min(delay * 2, 300)
                 log(f"rate limited, backing off {int(delay)}s")
@@ -753,12 +906,15 @@ def run_direct_mode(goal: str) -> str:
         if terminal_token(text, "DONE") or text.strip() == "DONE":
             if gate_done(messages):
                 status = "completed"
+                _telemetry.finish_span()
                 break
             time.sleep(delay)
+            _telemetry.finish_span()
             continue
         if terminal_token(text, "BLOCKED") or text.strip() == "BLOCKED":
             log("agent reported BLOCKED.")
             status = "blocked"
+            _telemetry.finish_span()
             break
 
         tool_calls = getattr(msg, "tool_calls", None) or []
@@ -767,6 +923,7 @@ def run_direct_mode(goal: str) -> str:
             if reflect_streak >= 3:
                 log("agent reflected 3x in a row without tools — assuming stuck, halting.")
                 status = "exhausted"
+                _telemetry.finish_span()
                 break
             if reflect_streak == 1:
                 nudge = ("You must take a concrete action using a tool now. Do not ask questions. "
@@ -776,6 +933,7 @@ def run_direct_mode(goal: str) -> str:
                          "No questions allowed.")
             messages.append({"role": "user", "content": nudge})
             log(f"step {step}: (reflection #{reflect_streak}) {text[:100]!r}")
+            _telemetry.finish_span()
             time.sleep(delay)
             continue
 
@@ -799,8 +957,11 @@ def run_direct_mode(goal: str) -> str:
                     log(f"step {step}: (verification failing) feeding results back")
                     messages.append({"role": "user", "content":
                         "VERIFICATION CURRENTLY FAILS — fix before DONE:\n" + vout})
+        _telemetry.record_event("step.end", {"step": str(step), "cost": f"{running_cost:.4f}"})
+        _telemetry.finish_span()
         time.sleep(delay)
 
+    _telemetry.finish_span()
     finish(status, step, start, goal, step + 1, running_cost)
     return status
 
@@ -857,6 +1018,12 @@ def cmd_status(args: argparse.Namespace) -> int:
         print(f"  Elapsed    : {elapsed}s")
         if running_cost > 0:
             print(f"  Cost       : ${running_cost:.2f}")
+            cost_data = state.get("cost_breakdown", {})
+            if isinstance(cost_data, dict):
+                for item in cost_data.get("by_iter", [])[:10]:
+                    est = " (est)" if item.get("is_estimated") else ""
+                    print(f"    - iter {item.get('iter')}: ${_to_float(item.get('cost')):.4f} "
+                          f"model={item.get('model')}{est}")
         if status == "running":
             pid_path = PID_FILE
             if pid_path.exists():
@@ -886,11 +1053,13 @@ def cmd_status(args: argparse.Namespace) -> int:
     return EXIT_COMPLETED
 
 
-def cmd_serve(args: argparse.Namespace) -> int:
-    """Start a tiny web server showing run status."""
-    port = args.port if args.port else 8080
-    html_page = textwrap.dedent("""\
-    <!DOCTYPE html>
+def _render_status_page() -> str:
+    """Render the full monitor HTML page from the current run state.
+
+    Extracted from cmd_serve so tests can assert on the HTML — including the
+    cost breakdown card — without binding a port.
+    """
+    html_page = textwrap.dedent("""    <!DOCTYPE html>
     <html lang="en">
     <head>
     <meta charset="UTF-8">
@@ -918,6 +1087,12 @@ def cmd_serve(args: argparse.Namespace) -> int:
       .footer { text-align:center; color:#484f58; margin-top:2rem; font-size:0.85rem; }
       pre { background:#0d1117; padding:0.8rem; border-radius:6px; overflow-x:auto;
             font-size:0.85rem; margin-top:0.5rem; }
+      .bars { margin-top:0.8rem; }
+      .bar-row { display:flex; align-items:center; gap:0.6rem; padding:0.2rem 0; }
+      .bar-label { color:#8b949e; font-size:0.8rem; width:4.5rem; text-align:right; }
+      .bar-track { flex:1; background:#21262d; border-radius:4px; height:12px; overflow:hidden; }
+      .bar-fill { height:100%; background:#58a6ff; border-radius:4px; transition:width 0.3s ease; }
+      .bar-val { color:#f0f6fc; font-size:0.8rem; width:6.5rem; }
     </style>
     <script>
       setInterval(() => location.reload(), 5000);
@@ -933,65 +1108,102 @@ def cmd_serve(args: argparse.Namespace) -> int:
     </script>
     """)
 
-    def _render_status() -> str:
-        state = load_state()
-        summary_text = ""
+    state = load_state()
+    summary_text = ""
+    try:
+        summary_text = SUMMARY_FILE.read_text().strip()
+    except Exception:
+        pass
+
+    if not state:
+        return html_page + ("<div class='card'><h2>No runs found</h2></div>"
+                            + "<div class='footer'>AgentLoop Monitor</div></body></html>")
+
+    status = state.get("status", "unknown")
+    goal = state.get("goal", "")[:100]
+    iters = state.get("iter", 0)
+    started_at = state.get("started_at", 0)
+    mode = state.get("mode", "cli")
+    running_cost = state.get("running_cost", 0.0)
+    elapsed = int(time.time() - started_at) if started_at else 0
+
+    badge_class = status if status in ("running", "completed", "blocked", "timeout", "stopped") else "stopped"
+
+    def _row(label: str, val: str) -> str:
+        return (f"<div class='row'><span class='label'>{label}</span>"
+                f"<span class='value'>{val}</span></div>")
+
+    rows = [
+        _row("Status", f"<span class='status-badge {badge_class}'>{status}</span>"),
+        _row("Goal", goal),
+        _row("Mode", mode),
+        _row("Iterations", str(iters)),
+        _row("Elapsed", f"{elapsed}s"),
+    ]
+    if running_cost > 0:
+        rows.append(_row("Cost", f"${running_cost:.2f}"))
+
+    card = f"<div class='card'><h2>Run Status</h2>{''.join(rows)}</div>"
+
+    if summary_text:
+        card += f"<div class='card'><h2>Summary</h2><pre>{summary_text}</pre></div>"
+
+    # Cost breakdown card (plain HTML/CSS bars — no JS deps)
+    cost_card = ""
+    cost_data = state.get("cost_breakdown", {})
+    if isinstance(cost_data, dict):
+        by_iter = cost_data.get("by_iter", [])
+        if by_iter:
+            max_cost = max((_to_float(i.get("cost")) for i in by_iter), default=1.0)
+            if max_cost <= 0:
+                max_cost = 1.0
+            bars = []
+            model_totals: dict[str, float] = {}
+            for item in by_iter:
+                c = _to_float(item.get("cost"))
+                model = str(item.get("model") or "unknown")
+                model_totals[model] = model_totals.get(model, 0.0) + c
+                est = " (est)" if item.get("is_estimated") else ""
+                pct = (c / max_cost) * 100
+                bars.append(
+                    f"<div class='bar-row'><span class='bar-label'>iter {item.get('iter')}</span>"
+                    f"<div class='bar-track'><div class='bar-fill' style='width:{pct:.0f}%'></div></div>"
+                    f"<span class='bar-val'>${c:.4f}{est}</span></div>")
+            model_rows = "".join(
+                _row(m, f"${v:.4f}") for m, v in sorted(model_totals.items(), key=lambda kv: -kv[1]))
+            total_cost = float(cost_data.get("running_cost", 0) or 0)
+            cost_card = (
+                f"<div class='card'><h2>Cost Breakdown</h2>"
+                f"{_row('Total', f'${total_cost:.4f}')}"
+                f"<div class='bars'>{''.join(bars)}</div>"
+                f"<h3 style='margin-top:0.8rem;font-size:0.95rem;color:#f0f6fc;'>By model</h3>"
+                f"{model_rows}</div>")
+
+    return html_page + card + cost_card + "<div class='footer'>AgentLoop Monitor</div></body></html>"
+
+
+class _MonitorHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the monitoring UI."""
+
+    def do_GET(self) -> None:
         try:
-            summary_text = SUMMARY_FILE.read_text().strip()
+            page = _render_status_page()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(page.encode("utf-8"))
         except Exception:
-            pass
+            self.send_response(500)
+            self.end_headers()
 
-        if not state:
-            return html_page + "<div class='card'><h2>No runs found</h2></div>"
+    def log_message(self, fmt: str, *args: Any) -> None:
+        log(f"web: {fmt % args}")
 
-        status = state.get("status", "unknown")
-        goal = state.get("goal", "")[:100]
-        iters = state.get("iter", 0)
-        started_at = state.get("started_at", 0)
-        mode = state.get("mode", "cli")
-        running_cost = state.get("running_cost", 0.0)
-        elapsed = int(time.time() - started_at) if started_at else 0
 
-        badge_class = status if status in ("running", "completed", "blocked", "timeout", "stopped") else "stopped"
-
-        def _row(label, val):
-            return (f"<div class='row'><span class='label'>{label}</span>"
-                    f"<span class='value'>{val}</span></div>")
-
-        rows = [
-            _row("Status", f"<span class='status-badge {badge_class}'>{status}</span>"),
-            _row("Goal", goal),
-            _row("Mode", mode),
-            _row("Iterations", str(iters)),
-            _row("Elapsed", f"{elapsed}s"),
-        ]
-        if running_cost > 0:
-            rows.append(_row("Cost", f"${running_cost:.2f}"))
-
-        card = f"<div class='card'><h2>Run Status</h2>{''.join(rows)}</div>"
-
-        if summary_text:
-            card += f"<div class='card'><h2>Summary</h2><pre>{summary_text}</pre></div>"
-
-        return html_page + card + "<div class='footer'>AgentLoop Monitor</div></body></html>"
-
-    class _Handler(BaseHTTPRequestHandler):
-        """HTTP request handler for the monitoring UI."""
-        def do_GET(self) -> None:
-            try:
-                page = _render_status()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(page.encode("utf-8"))
-            except Exception:
-                self.send_response(500)
-                self.end_headers()
-
-        def log_message(self, fmt, *args) -> None:
-            log(f"web: {fmt % args}")
-
-    server = HTTPServer(("0.0.0.0", port), _Handler)
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Start a tiny web server showing run status."""
+    port = args.port if args.port else 8080
+    server = HTTPServer(("0.0.0.0", port), _MonitorHandler)
     log(f"web monitor started at http://0.0.0.0:{port}")
     log("press Ctrl+C to stop the monitor")
 
@@ -1003,34 +1215,43 @@ def cmd_serve(args: argparse.Namespace) -> int:
     return EXIT_COMPLETED
 
 
+
 # ============================================================================
 # MULTI-AGENT FAN-OUT
 # ============================================================================
 def cmd_run_plan(args: argparse.Namespace) -> int:
-    """Parse a plan.md file and spawn sub-loops for each task."""
+    """Parse a plan.md file and spawn sub-loops for each task — in parallel.
+
+    Recognizes `- [ ] task`, `- task`, `* task`, and `## task` formats, plus
+    DAG dependencies via `(after: #N)` / `(depends on: #N)` annotations.
+    Each task runs in its own sandbox + namespaced state/log/pid files, so
+    independent tasks never clobber each other, and tasks whose dependency
+    failed are skipped (never started).
+    """
     plan_path = pathlib.Path(args.run)
     if not plan_path.exists():
-        log(f"ERROR: plan file not found: {plan_path}")
+        log(f"ERROR: plan file not found: {plan_path}\n"
+            "Fix: run from the project root and use a path relative to it, "
+            "e.g. `agentloop --run plan.md`.")
         return EXIT_CONFIG
 
-    tasks = _parse_plan(plan_path.read_text())
-    if not tasks:
-        log("ERROR: no tasks found in plan file. Use `- [ ] task description` format.")
+    text = plan_path.read_text()
+    nodes = parse_plan_dag(text)
+    if not nodes:
+        log("ERROR: no tasks found in plan file. Use `- [ ] task description` format.\n"
+            "Fix: check the file contains at least one checkbox/bullet/heading task.")
         return EXIT_CONFIG
 
-    log(f"Parsed {len(tasks)} tasks from {plan_path.name}")
-    results: list[dict] = []
-    all_ok = True
+    verify = args.verify or os.environ.get("VERIFY_CMD", "")
+    harness = args.harness or os.environ.get("AGENT_PRESET", "")
+    agent_cmd = args.agent_cmd or os.environ.get("AGENT_CMD", "")
+    workers = args.workers if getattr(args, "workers", None) else min(4, len(nodes))
 
-    for i, task in enumerate(tasks):
-        log(f"[{i + 1}/{len(tasks)}] Starting task: {task[:80]}...")
+    log(f"Parsed {len(nodes)} tasks from {plan_path.name} (workers={workers})")
 
-        # Launch a subprocess for this task
-        verify = args.verify or os.environ.get("VERIFY_CMD", "")
-        harness = args.harness or os.environ.get("AGENT_PRESET", "")
-        agent_cmd = args.agent_cmd or os.environ.get("AGENT_CMD", "")
-
-        cmd_parts = [sys.executable, "-m", "agentloop", task]
+    def worker_fn(node: TaskNode, sandbox_dir: pathlib.Path, state_file: pathlib.Path) -> int:
+        """Run one plan task as an isolated agentloop subprocess."""
+        cmd_parts = [sys.executable, "-m", "agentloop", node.name]
         if verify:
             cmd_parts.extend(["--verify", verify])
         if harness:
@@ -1038,35 +1259,27 @@ def cmd_run_plan(args: argparse.Namespace) -> int:
         if agent_cmd:
             cmd_parts.extend(["--agent-cmd", agent_cmd])
 
+        env = os.environ.copy()
+        state_s = str(state_file)
+        stem = state_s[:-5] if state_s.endswith(".json") else state_s  # strip .json
+        env["AGENTLOOP_SANDBOX"] = str(sandbox_dir)
+        env["AGENTLOOP_STATE_FILE"] = state_s
+        env["AGENTLOOP_GOAL_FILE"] = str(pathlib.Path(state_s).with_name(f"goal.task-{node.task_id}.txt"))
+        env["AGENTLOOP_LOG_FILE"] = stem.replace("agentloop.state", "agentloop.log")
+        env["AGENTLOOP_PID_FILE"] = stem.replace("agentloop.state", "agentloop.pid")
+        env["AGENTLOOP_SUMMARY_FILE"] = stem.replace("agentloop.state", "agentloop.summary")
         try:
-            r = subprocess.run(cmd_parts, capture_output=True, text=True, timeout=args.timeout or 3600)
-            task_ok = r.returncode == 0
-            results.append({
-                "task": task,
-                "returncode": r.returncode,
-                "passed": task_ok,
-                "output": (r.stdout or "")[:500] + (r.stderr or "")[:500],
-            })
+            r = subprocess.run(cmd_parts, capture_output=True, text=True,
+                               timeout=args.timeout or 3600, env=env)
+            return r.returncode
         except subprocess.TimeoutExpired:
-            results.append({
-                "task": task,
-                "returncode": -1,
-                "passed": False,
-                "output": "TIMEOUT",
-            })
+            log(f"task {node.task_id} timed out after {(args.timeout or 3600)}s")
+            return -1
         except Exception as e:
-            results.append({
-                "task": task,
-                "returncode": -2,
-                "passed": False,
-                "output": str(e),
-            })
+            log(f"task {node.task_id} crashed: {e}")
+            return -2
 
-        if not results[-1]["passed"]:
-            all_ok = False
-            log(f"[{i + 1}/{len(tasks)}] FAILED: {task[:60]}...")
-        else:
-            log(f"[{i + 1}/{len(tasks)}] PASSED: {task[:60]}...")
+    results = run_plan_parallel(nodes, worker_fn, max_workers=workers)
 
     # Print summary
     print("\n" + "=" * 60)
@@ -1075,12 +1288,17 @@ def cmd_run_plan(args: argparse.Namespace) -> int:
     passed = sum(1 for r in results if r["passed"])
     total = len(results)
     print(f"  Tasks: {passed}/{total} passed")
-    for i, r in enumerate(results):
-        icon = "✅" if r["passed"] else "❌"
-        print(f"  {icon} [{i + 1}] ({r['returncode']}) {r['task'][:70]}")
+    for r in results:
+        if r["passed"]:
+            icon = "✅"
+        elif r.get("skipped"):
+            icon = "⏭️"
+        else:
+            icon = "❌"
+        print(f"  {icon} [{r['task_id']}] ({r['returncode']}) {r['name'][:70]}")
     print("=" * 60)
 
-    return EXIT_COMPLETED if all_ok else EXIT_BLOCKED
+    return EXIT_COMPLETED if passed == total else EXIT_BLOCKED
 
 
 def _parse_plan(text: str) -> list[str]:
@@ -1171,42 +1389,196 @@ def _scaffold(args: argparse.Namespace) -> None:
 # ============================================================================
 # MAIN
 # ============================================================================
+def cmd_cost(_args: argparse.Namespace) -> int:
+    """Print cost summary and breakdown."""
+    state = load_state()
+    cost_data = state.get("cost_breakdown", {})
+    running_cost = state.get("running_cost", 0.0)
+    iters = state.get("iter", 0)
+    print(f"Total Cost: ${running_cost:.4f} across {iters} iterations")
+    by_iter = cost_data.get("by_iter", [])
+    if by_iter:
+        print("Breakdown by iteration:")
+        for item in by_iter:
+            est_str = " (estimated)" if item.get("is_estimated") else ""
+            in_t = item.get("input_tokens") or 0
+            out_t = item.get("output_tokens") or 0
+            print(f"  Iter {item.get('iter')}: ${_to_float(item.get('cost')):.4f} | "
+                  f"model={item.get('model')} | in={in_t} tok, out={out_t} tok{est_str}")
+    return EXIT_COMPLETED
+
+
+def cmd_examples(_args: argparse.Namespace) -> int:
+    """List all bundled examples with a one-line description (T7/T9.1)."""
+    exdir = DATA_DIR / "examples"
+    print("Bundled AgentLoop examples:\n")
+    if not exdir.exists():
+        print("  (none found)")
+        return EXIT_COMPLETED
+    for d in sorted(exdir.iterdir()):
+        if not d.is_dir():
+            continue
+        desc = ""
+        readme = d / "README.md"
+        if readme.exists():
+            for line in readme.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    desc = line[:100]
+                    break
+        if not desc:
+            goal = d / "goal.txt"
+            if goal.exists():
+                desc = goal.read_text().strip().splitlines()[0][:100]
+        print(f"  {d.name:<26} {desc}")
+    print("\nSeed one with:  agentloop --init --example <name>")
+    return EXIT_COMPLETED
+
+
+def cmd_doctor(_args: argparse.Namespace) -> int:
+    """Diagnose common setup issues; exits non-zero with actionable fixes (T9.1)."""
+    problems: list[str] = []
+    checks: list[tuple[str, bool]] = []
+
+    cmd = resolve_agent_cmd()
+    if not cmd:
+        problems.append(
+            "✗ No agent CLI found. Install one of opencode / kilocode / claude / aider / codex / goose "
+            "(e.g. `npm install -g opencode` or `pip install aider-install`), or set AGENT_CMD in .env "
+            "to your own command.")
+    else:
+        binary = cmd.split()[0]
+        present = shutil.which(binary) is not None
+        checks.append((f"agent CLI: {cmd[:70]}", present))
+        if not present:
+            problems.append(
+                f"✗ Configured agent command {binary!r} is not on PATH. "
+                "Fix: install it, or point AGENT_CMD at the correct binary in .env.")
+
+    vcmd = os.environ.get("VERIFY_CMD", "")
+    if not vcmd:
+        problems.append(
+            "✗ No VERIFY_CMD set. Without an oracle the loop trusts the agent's DONE signal. "
+            "Fix: run `agentloop --init`, then set VERIFY_CMD=\"bash verify.sh\" in .env.")
+    else:
+        checks.append((f"verifier: {vcmd}", True))
+
+    if not _args.goal and not GOAL_FILE.exists():
+        problems.append(
+            "✗ No goal set and no goal.txt found. Fix: run `agentloop --init`, "
+            "or pass a goal as the first argument.")
+
+    try:
+        SANDBOX.mkdir(parents=True, exist_ok=True)
+        probe = SANDBOX / ".agentloop_doctor_probe"
+        probe.write_text("ok")
+        probe.unlink(missing_ok=True)
+        checks.append((f"sandbox writable ({SANDBOX})", True))
+    except Exception as e:
+        checks.append(("sandbox writable", False))
+        problems.append(f"✗ Sandbox not writable: {e}. Fix: check permissions on {SANDBOX}.")
+
+    if AGENT_MODE == "direct" and not API_KEY:
+        problems.append(
+            "✗ AGENT_MODE=direct but no AGENTLOOP_API_KEY set. Fix: add AGENTLOOP_API_KEY to .env "
+            "(or switch to AGENT_MODE=cli with a real harness).")
+
+    if is_any_telemetry_enabled() and not (_telemetry.enabled or _langfuse.enabled):
+        problems.append(
+            "✗ Telemetry is configured but the optional dependency is missing. "
+            "Fix: pip install 'agentloop[otlp]' and/or 'agentloop[langfuse]'.")
+
+    if USE_DOCKER and shutil.which("docker") is None:
+        problems.append("✗ --docker requested but docker not found. Fix: install Docker or drop --docker.")
+    if USE_PODMAN and shutil.which("podman") is None:
+        problems.append("✗ --podman requested but podman not found. Fix: install Podman or drop --podman.")
+
+    print("AgentLoop doctor — setup check")
+    print("=" * 50)
+    for label, ok in checks:
+        print(f"  {'✔' if ok else '✗'} {label}")
+    if problems:
+        print("\nProblems found:")
+        for p in problems:
+            print(f"  {p}")
+        print("\nFix the items above, then re-run `agentloop --doctor`.")
+        return EXIT_CONFIG
+    print("\nAll checks passed. Happy looping!")
+    return EXIT_COMPLETED
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="agentloop",
-        description="Harness-agnostic, self-verifying autonomy wrapper for coding agents.")
-    ap.add_argument("goal", nargs="?", help="task text (writes goal.txt; overrides the file)")
-    ap.add_argument("--verify", help="set VERIFY_CMD — the verification oracle command")
-    ap.add_argument("--harness", help="preset: opencode|kilocode|claude|aider|codex|goose")
-    ap.add_argument("--agent-cmd", help="explicit agent command (overrides --harness)")
-    ap.add_argument("--mode", help="cli (default) | direct")
-    ap.add_argument("--max-iters", type=int, help="max loop iterations")
-    ap.add_argument("--wall", type=int, help="wall-clock limit in seconds")
-    ap.add_argument("--step-delay", type=float, help="delay between iterations (s)")
-    ap.add_argument("--max-cost", type=float, help="max cost in USD (cost cap)")
-    ap.add_argument("--init", action="store_true",
-                    help="scaffold goal.txt + verify.sh + .env, then exit")
-    ap.add_argument("--example", type=str, default=None, metavar="NAME",
-                    help="seed from an example (tax-demo | json-linter | refactor-regression)")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="print the resolved configuration and exit (no loop)")
-    ap.add_argument("--version", action="version", version=f"agentloop {__version__}")
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Harness-agnostic, self-verifying autonomy wrapper for coding agents.",
+        epilog=textwrap.dedent("""\
+            examples:
+              agentloop "build a JSON linter" --verify "bash verify.sh"
+              agentloop --init --example json-linter
+              agentloop --run plan.md --workers 4
+              agentloop --serve --port 9090
+              agentloop --status | --cost | --doctor | --examples
+            """))
 
-    # Subcommands as optional flags (avoids positional arg conflicts with goal)
-    ap.add_argument("--status", action="store_true", help="show current run status")
-    ap.add_argument("--serve", action="store_true", help="start web monitoring UI")
-    ap.add_argument("--port", type=int, default=8080, help="HTTP port for --serve (default 8080)")
-    ap.add_argument("--run", type=str, default=None, metavar="PLAN.md",
-                     help="run tasks from a plan.md file (multi-agent)")
-    ap.add_argument("--timeout", type=int, default=3600, help="per-task timeout for --run (seconds)")
+    g_run = ap.add_argument_group("run options")
+    g_run.add_argument("goal", nargs="?", help="task text (writes goal.txt; overrides the file)")
+    g_run.add_argument("--verify", help="set VERIFY_CMD — the verification oracle command")
+    g_run.add_argument("--harness", help="preset: opencode|kilocode|claude|aider|codex|goose")
+    g_run.add_argument("--agent-cmd", help="explicit agent command (overrides --harness)")
+    g_run.add_argument("--mode", help="cli (default) | direct")
+    g_run.add_argument("--max-iters", type=int, help="max loop iterations")
+    g_run.add_argument("--wall", type=int, help="wall-clock limit in seconds")
+    g_run.add_argument("--step-delay", type=float, help="delay between iterations (s)")
+    g_run.add_argument("--max-cost", type=float, help="max cost in USD (cost cap)")
+    g_run.add_argument("--init", action="store_true",
+                        help="scaffold goal.txt + verify.sh + .env, then exit")
+    g_run.add_argument("--example", type=str, default=None, metavar="NAME",
+                        help="seed from a bundled example (see --examples)")
+    g_run.add_argument("--dry-run", action="store_true",
+                        help="print the resolved configuration and exit (no loop)")
+
+    g_plan = ap.add_argument_group("multi-agent plan options")
+    g_plan.add_argument("--run", type=str, default=None, metavar="PLAN.md",
+                        help="run tasks from a plan.md file (parallel, DAG-aware)")
+    g_plan.add_argument("--workers", type=int, default=0, metavar="N",
+                        help="parallel workers for --run (default: min(4, #tasks))")
+
+    g_iso = ap.add_argument_group("container isolation")
+    g_iso.add_argument("--docker", action="store_true",
+                       help="run agent inside a Docker container (see docs/ISOLATION.md)")
+    g_iso.add_argument("--podman", action="store_true",
+                       help="run agent inside a Podman container (see docs/ISOLATION.md)")
+
+    g_sub = ap.add_argument_group("subcommands")
+    g_sub.add_argument("--status", action="store_true", help="show current run status")
+    g_sub.add_argument("--cost", action="store_true", help="show cost breakdown for the latest run")
+    g_sub.add_argument("--serve", action="store_true", help="start web monitoring UI")
+    g_sub.add_argument("--port", type=int, default=8080, help="HTTP port for --serve (default 8080)")
+    g_sub.add_argument("--examples", action="store_true", help="list all bundled examples")
+    g_sub.add_argument("--doctor", action="store_true", help="diagnose common setup issues")
+    g_sub.add_argument("--version", action="version", version=f"agentloop {__version__}")
 
     args = ap.parse_args(argv)
+
+    if args.docker:
+        os.environ["USE_DOCKER"] = "1"
+        read_config()
+    if args.podman:
+        os.environ["USE_PODMAN"] = "1"
+        read_config()
 
     # Handle subcommands-as-flags
     if args.status:
         return cmd_status(args)
+    if args.cost:
+        return cmd_cost(args)
     if args.serve:
         return cmd_serve(args)
+    if args.examples:
+        return cmd_examples(args)
+    if args.doctor:
+        return cmd_doctor(args)
     if args.run:
         return cmd_run_plan(args)
 
