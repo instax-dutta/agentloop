@@ -7,19 +7,23 @@ network effect: users share verifiers → more users → more verifiers.
 ## How to contribute
 
 1. Copy the structure from any [bundled example](../examples/) — it needs a
-   `verify.sh`, a `goal.txt`, a one-line `README.md`, **and a `solution/`
-   directory** containing a correct implementation of the task (this is what
-   CI seeds the sandbox with).
+   `verify.sh`, a `goal.txt`, a one-line `README.md`, a `solution/` directory
+   containing a **correct** implementation of the task, and a `bad-solution/`
+   directory containing a plausible-but-**incorrect** one that **mirrors
+   `solution/` file-for-file** (same relative paths, so `verify.sh` actually
+   runs it). CI seeds the sandbox from both.
 2. Tag it: add a `tags:` line in the README, e.g.
    `tags: python, cli, held-out-oracle`.
 3. Make sure `verify.sh` honors `AGENTLOOP_SANDBOX` (every worker and the CI
    check set it) and falls back to resolving the sandbox relative to the
    script.
 4. Open a PR to `community-verifiers/<name>/`. CI runs
-   [`check_verifiers.py`](check_verifiers.py), which seeds the sandbox from
-   your `solution/` and requires `verify.sh` to exit 0 — so verify locally
-   with `python community-verifiers/check_verifiers.py` before opening the
-   PR.
+   [`check_verifiers.py`](check_verifiers.py), which proves both directions:
+   it seeds the sandbox from your `solution/` and requires `verify.sh` to
+   exit 0 (accepts correct code), then seeds from your `bad-solution/` and
+   requires `verify.sh` to exit non-zero (rejects incorrect code). Verify
+   locally with `python community-verifiers/check_verifiers.py` before
+   opening the PR.
 
 ## Verifier checklist (required for merge)
 
@@ -34,6 +38,12 @@ network effect: users share verifiers → more users → more verifiers.
 - [ ] Has at least one adversarial case (the point is defeating overfitting).
 - [ ] Ships a `solution/` dir with a correct implementation — CI seeds the
       sandbox from it and fails if `verify.sh` doesn't exit 0.
+- [ ] Ships a `bad-solution/` dir with a plausible-but-incorrect
+      implementation that **mirrors `solution/` file-for-file** (same
+      relative paths, so `verify.sh` genuinely runs it) — CI seeds the
+      sandbox from it and fails if `verify.sh` doesn't exit 1. This is the
+      adversarial check: a verifier that can't tell correct from incorrect is
+      worthless.
 
 ## Tag reference
 
@@ -60,5 +70,5 @@ network effect: users share verifiers → more users → more verifiers.
   of ~80 generated cases are visible, and the candidate must pass them all
   (`tags: held-out-oracle`).
 
-Use any as the template for yours — every verifier ships a `solution/`
-dir that CI seeds and checks.
+Use any as the template for yours — every verifier ships a `solution/` and a
+`bad-solution/` dir that CI seeds and checks in both directions.
