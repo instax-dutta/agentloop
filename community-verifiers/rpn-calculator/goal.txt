@@ -1,0 +1,30 @@
+Write a Python script in the sandbox called calc.py: a reverse-Polish-notation
+(RPN) integer calculator that reads from standard input and writes to standard
+output.
+
+CONTRACT
+- Read one expression per line from stdin; print exactly one result per line.
+- Blank lines are skipped (no output for them). Empty input produces no
+  output at all.
+- Tokens are whitespace-separated. Operands are signed integers. Operators
+  are `+`, `-`, `*`, `/`.
+- Evaluation: operands push onto a stack. An operator pops the two top values
+  (a = top, b = next) and pushes `b <op> a`.
+- Division is INTEGER division truncating toward zero (like C, NOT Python's
+  `//`): 7 / 2 = 3, -7 / 2 = -3, 7 / -2 = -3.
+- Division by zero prints "ERROR".
+- Any other invalid line prints "ERROR": unknown token, an operator with
+  fewer than two operands on the stack, or leftover operands at end of line.
+
+Examples:
+  input:  "2 3 +"       ->  "5"
+  input:  "5 1 2 + *"   ->  "15"    (5 * (1 + 2))
+  input:  "1 0 /"       ->  "ERROR" (division by zero)
+  input:  "1 +"         ->  "ERROR" (stack underflow)
+
+The verifier generates pairs of expressions that MUST evaluate to the same
+integer (commutativity, associativity, distributivity, and identity laws) and
+asserts your outputs agree — a correct implementation passes every pair, so
+there is no set of "example outputs" to memorize. Test it against the
+verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

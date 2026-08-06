@@ -163,6 +163,17 @@ contribution.
   exact first divergence back into the loop.
 - **Runtime:** < 15 s · **Cost:** $0 (requires `agentloop-cli`).
 
+### `rpn-calculator` — property-based invariants (`tags: property-based`)
+
+- **Oracle pattern:** a seeded generator emits pairs of RPN expressions that
+  are algebraically guaranteed to evaluate to the same integer
+  (commutativity, associativity, distributivity, identity laws); the
+  candidate's outputs must agree on both sides — no reference
+  implementation, no expected values.
+- **What it teaches:** the invariant *is* the oracle — ideal for anything
+  with laws that must hold (calculators, validators, algebraic transforms).
+- **Runtime:** < 10 s · **Cost:** $0.
+
 Built a verifier worth sharing? Add it to the
 [community-verifiers gallery](../community-verifiers/) — the merge checklist
 and tag taxonomy (held-out, golden-files, fixture, …) live in

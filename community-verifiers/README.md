@@ -69,6 +69,10 @@ network effect: users share verifiers → more users → more verifiers.
   integer ↔ Roman-numeral converter graded by a sealed held-out oracle: only 3
   of ~80 generated cases are visible, and the candidate must pass them all
   (`tags: held-out-oracle`).
+- [`rpn-calculator/`](rpn-calculator/) — an RPN integer calculator verified by
+  algebraic invariants: seeded pairs of provably-equal expressions must agree,
+  with no reference implementation and no expected values (`tags:
+  property-based`).
 
 Use any as the template for yours — every verifier ships a `solution/` and a
 `bad-solution/` dir that CI seeds and checks in both directions.
