@@ -1,0 +1,23 @@
+Write a Python script in the sandbox called roman.py that converts between
+integers and Roman numerals, behaving EXACTLY like the reference the verifier
+uses.
+
+It reads ONE line from standard input:
+
+- If the line is an integer (digits only): print the Roman numeral for it.
+  The valid range is 1 to 3999 inclusive; anything outside prints "INVALID".
+- Otherwise (a Roman numeral): print the integer it represents. Use the
+  standard subtraction rules (IV=4, IX=9, XL=40, XC=90, CD=400, CM=900).
+  Any non-Roman input prints "INVALID".
+
+Examples:
+  input: "1994"    ->  "MCMXCIV"
+  input: "MCMXCIV" ->  "1994"
+  input: "0"       ->  "INVALID"
+  input: "ABC"     ->  "INVALID"
+
+The verifier records a trusted reference implementation on ~80 generated
+inputs — only 3 are visible to you — and grades your script on ALL of them,
+so you must be correct on inputs you have never seen. Test it against the
+verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

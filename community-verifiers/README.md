@@ -55,6 +55,10 @@ network effect: users share verifiers → more users → more verifiers.
 - [`uniq-reimplementation/`](uniq-reimplementation/) — reimplement the `uniq`
   CLI and prove it by byte-for-byte comparison against a reference on
   generated inputs (`tags: behavior-equivalence`).
+- [`roman-numeral-converter/`](roman-numeral-converter/) — a bidirectional
+  integer ↔ Roman-numeral converter graded by a sealed held-out oracle: only 3
+  of ~80 generated cases are visible, and the candidate must pass them all
+  (`tags: held-out-oracle`).
 
-Use either as the template for yours — every verifier ships a `solution/`
+Use any as the template for yours — every verifier ships a `solution/`
 dir that CI seeds and checks.

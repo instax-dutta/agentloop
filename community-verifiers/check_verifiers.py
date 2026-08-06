@@ -46,6 +46,9 @@ def _seed_and_run(verifier_dir: pathlib.Path) -> tuple[int, str]:
 
         env = dict(os.environ)
         env["AGENTLOOP_SANDBOX"] = str(t_sandbox)
+        # held-out-oracle verifiers run `python3 -m agentloop.oracle`; make the
+        # repo's agentloop importable even from the throwaway cwd below.
+        env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
         # cwd = temp project root so even cwd-relative (`./sandbox`) resolvers
         # land in temp space and can never touch the real repo sandbox.
         r = subprocess.run(["bash", str(t_verifier / "verify.sh")],
