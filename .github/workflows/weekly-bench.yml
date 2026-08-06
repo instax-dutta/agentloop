@@ -1,0 +1,51 @@
+name: Weekly SWE-bench Regression
+
+# Re-runs a 10-task SWE-bench-Verified subset weekly so a harness update that
+# breaks AgentLoop's cost parsers / loop shows up within a week. Posts a
+# Discord notification if the resolve rate drops more than 10 points from the
+# published baseline (80%).
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  bench:
+    name: 10-task regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+      - name: Run 10-task benchmark (mock harness for determinism)
+        run: |
+          python bench/swe_bench_runner.py --preset opencode --limit 10 --mock
+      - name: Check resolve rate vs baseline
+        id: bench-check
+        env:
+          BENCH_DISCORD_WEBHOOK: ${{ secrets.BENCH_DISCORD_WEBHOOK }}
+        run: |
+          SUMMARY=$(ls -t bench/results/*_summary.md | head -1)
+          RATE=$(grep -oE '[0-9.]+%' "$SUMMARY" | head -1 | tr -d '%')
+          echo "resolve rate: ${RATE}%"
+          BASELINE=80
+          if command -v jq >/dev/null 2>&1 && [ -n "$BENCH_DISCORD_WEBHOOK" ]; then
+            if awk "BEGIN { exit !($RATE < $BASELINE - 10) }"; then
+              curl -s -X POST "$BENCH_DISCORD_WEBHOOK" \
+                -H 'Content-Type: application/json' \
+                -d "{\"content\":\":rotating_light: AgentLoop weekly bench regression: resolve rate ${RATE}% (baseline ${BASELINE}%). See $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}"
+              echo "alert sent"
+            else
+              echo "resolve rate OK (${RATE}% >= ${BASELINE}%)"
+            fi
+          fi

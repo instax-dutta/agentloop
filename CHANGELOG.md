@@ -2,6 +2,64 @@
 
 All notable changes to AgentLoop are documented here.
 
+## [0.5.0-dev] — 2026-08-06
+
+### Added
+
+- **True parallel multi-agent fan-out** — `agentloop --run plan.md` now runs
+  tasks in parallel with per-task sandboxes (`sandbox/task-N/`) and namespaced
+  state/log/pid files. `--workers N` controls concurrency. DAG dependencies
+  via `(after: #N)` / `(depends on: #N)` (comma-separated lists supported);
+  downstream tasks are **skipped** when a dependency fails. (#7)
+
+- **Optional telemetry** — `agentloop/telemetry.py` with an OpenTelemetry
+  exporter (extras `[otlp]`) and a Langfuse exporter (extras `[langfuse]`).
+  Both are zero-overhead no-ops unless `AGENTLOOP_OTEL_ENDPOINT` / Langfuse
+  keys are set. Each loop iteration exports a span. (#12)
+
+- **Structured JSON logging** — `LOG_JSON=true` emits one JSON line per log
+  record for Loki / Elastic / CloudWatch ingestion. (#13)
+
+- **Cost dashboard** — `--serve` web UI gained a cost breakdown card
+  (total + per-iteration bars + by-model, plain HTML/CSS), `--status` shows
+  the per-iteration breakdown, and `agentloop --cost` prints a summary. (#1)
+
+- **CLI polish** — grouped `--help`, `agentloop --examples` (lists all bundled
+  examples), and `agentloop --doctor` (diagnoses missing agent CLI / verifier
+  / sandbox issues with actionable fixes). Error messages across the CLI now
+  include concrete fix instructions. (#14)
+
+- **Example gallery grew to 10** — new `regex-engine` (held-out oracle with
+  adversarial inputs), `csv-sorter` (property-based held-out),
+  `markdown-to-html` (golden files), `sql-query-rewriter` (behavior
+  equivalence), `python-type-checker` (exit-code oracle),
+  `api-endpoint` (HTTP integration), and `git-history-rewriter` (fixture
+  repos). Gallery: `docs/EXAMPLES.md`. (#9)
+
+- **`mypy --strict` passes** on `agentloop/` (`.mypy.ini` + CI step).
+
+- **Sustainment** — issue auto-label triage workflow, 48h issue-response SLA
+  documented in CONTRIBUTING, `community-verifiers/` marketplace skeleton,
+  and a weekly SWE-bench regression workflow with Discord alerts. (#10)
+
+- **Docs site** — mkdocs-material configuration and docs pages
+  (`mkdocs.yml`, `docs-requirements.txt`).
+
+- **Launch assets** — technical blog post on the held-out oracle
+  (`blog/2026-08-06-the-held-out-oracle.md`) and 3 launch-day social posts
+  (`blog/social/`). Star-count and star-history badges in README.
+
+### Fixed
+
+- README/CHANGELOG no longer claim "parallel multi-agent fan-out" was already
+  shipped; copy now says sequential until real parallelism landed here.
+- `parse_plan_dag` now correctly parses comma-separated dependency lists
+  (`depends on: #2, #3`).
+- Example verify scripts use `python3 -m agentloop.oracle` (the module path)
+  instead of the broken `python3 -m agentloop-oracle`.
+- README's misleading "no API key needed" claim removed; GNHF comparison
+  table replaced with category-defining language. (#11)
+
 ## [0.3.0] — 2026-07-19
 
 ### Added
@@ -29,7 +87,7 @@ All notable changes to AgentLoop are documented here.
   reproducibility. (#4)
 
 - **Multi-agent fan-out** (`agentloop run plan.md`) — parses a markdown plan
-  file and spawns sub-loops for each task in parallel sequence. Supports
+  file and spawns sub-loops for each task sequentially. Supports
   GitHub-style checklists, bullet points, and heading-based tasks. (#7)
 
 - **Smarter harness auto-detect** — `_auto_detect()` now runs a

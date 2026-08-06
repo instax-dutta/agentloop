@@ -1,0 +1,36 @@
+name: Issue Triage (auto-label)
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = (context.payload.issue.body || '').toLowerCase();
+            const title = context.payload.issue.title.toLowerCase();
+            const text = body + ' ' + title;
+            const labels = [];
+            if (/(docker|podman|container|isolation)/.test(text)) labels.push('isolation');
+            if (/(cost|budget|pricing|billing|expensive)/.test(text)) labels.push('cost');
+            if (/(benchmark|swe-bench|resolve rate)/.test(text)) labels.push('benchmark');
+            if (/(oracle|verify|held-out|seal)/.test(text)) labels.push('oracle');
+            if (/(example|docs|documentation)/.test(text)) labels.push('docs');
+            if (/(parallel|plan\.md|dag|worker)/.test(text)) labels.push('parallel');
+            if (/(telemetry|otel|langfuse|json log)/.test(text)) labels.push('telemetry');
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: labels,
+              });
+            }

@@ -1,0 +1,39 @@
+site_name: AgentLoop
+site_description: Provable correctness for autonomous coding agents — a harness-agnostic verify-gate with a held-out oracle.
+site_url: https://instax-dutta.github.io/agentloop/
+repo_url: https://github.com/instax-dutta/agentloop
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    scheme: slate
+    primary: indigo
+    accent: cyan
+  features:
+    - navigation.top
+    - toc.integrate
+
+markdown_extensions:
+  - admonition
+  - tables
+  - fenced_code
+  - codehilite
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Concepts:
+      - The verification oracle: concepts.md
+      - Isolation matrix: ISOLATION.md
+  - Examples: EXAMPLES.md
+  - Benchmarks: benchmarks.md
+  - Reference: reference.md
+  - Contributing: contributing.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/instax-dutta/agentloop

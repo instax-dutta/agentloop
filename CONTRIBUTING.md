@@ -18,9 +18,19 @@ Deterministic, no LLM required:
 ```bash
 python3 test_oracle.py
 python3 test_loop.py
+python3 test_cost.py
+python3 test_parallel.py
+python3 test_telemetry.py
 ```
 
-Both must pass before opening a PR. CI runs the same commands on Linux.
+All must pass before opening a PR. CI runs the same commands on Linux
+(Python 3.10 / 3.12 / 3.13), plus `mypy --strict agentloop/` and `ruff`.
+
+## Issue triage SLA
+
+Maintainers respond to issues within **48 hours** of opening. New issues are
+auto-labelled by the [triage workflow](.github/workflows/issue-label.yml)
+(isolation / cost / benchmark / oracle / docs / parallel / telemetry).
 
 ## The oracle contract
 
@@ -45,5 +55,6 @@ When changing `safe_env`, `run_verify`, or the loop’s DONE gate, add or update
 
 - One focused change per PR
 - **Use conventional commits** for PR titles: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. These trigger [Release Please](.github/workflows/release-please.yml) to auto-bump the version on merge.
-- Update `README.md` / `ISSUES.md` if you change user-facing behavior
+- Update `README.md` / docs if you change user-facing behavior
+- New verifier patterns belong in [`community-verifiers/`](community-verifiers/README.md)
 - Version bumps happen **automatically** via Release Please when a PR is merged to `main`. No manual version edits needed.
