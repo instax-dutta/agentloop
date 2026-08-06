@@ -78,6 +78,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: python test_telemetry.py
         shell: bash
+      - name: Community verifiers (seeded perfect solutions)
+        if: matrix.os == 'ubuntu-latest'
+        run: python community-verifiers/check_verifiers.py
+        shell: bash
       - name: CLI smoke (Linux)
         if: matrix.os == 'ubuntu-latest'
         run: |

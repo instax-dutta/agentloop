@@ -6,22 +6,34 @@ network effect: users share verifiers → more users → more verifiers.
 
 ## How to contribute
 
-1. Copy the structure from any [bundled example](../examples/) — it needs at
-   least a `verify.sh`, a `goal.txt`, and a one-line `README.md`.
+1. Copy the structure from any [bundled example](../examples/) — it needs a
+   `verify.sh`, a `goal.txt`, a one-line `README.md`, **and a `solution/`
+   directory** containing a correct implementation of the task (this is what
+   CI seeds the sandbox with).
 2. Tag it: add a `tags:` line in the README, e.g.
    `tags: python, cli, held-out-oracle`.
-3. Open a PR to `community-verifiers/<name>/`.
+3. Make sure `verify.sh` honors `AGENTLOOP_SANDBOX` (every worker and the CI
+   check set it) and falls back to resolving the sandbox relative to the
+   script.
+4. Open a PR to `community-verifiers/<name>/`. CI runs
+   [`check_verifiers.py`](check_verifiers.py), which seeds the sandbox from
+   your `solution/` and requires `verify.sh` to exit 0 — so verify locally
+   with `python community-verifiers/check_verifiers.py` before opening the
+   PR.
 
 ## Verifier checklist (required for merge)
 
-- [ ] Runs with `cwd` = project root (uses `$SANDBOX` or resolves
-      `../..`-style paths robustly).
+- [ ] Resolves the sandbox robustly — honors `AGENTLOOP_SANDBOX`, `$SCRIPT_DIR`
+      relative paths, and/or `./sandbox` from the project root. CI replays the
+      verifier in a throwaway project root with all three layouts available.
 - [ ] Exit 0 means *correct*, not merely "runs".
 - [ ] No secrets in the script or its inputs.
 - [ ] Deterministic: same inputs → same result, no network calls, no clock
       dependence.
 - [ ] Doesn't mutate the agent's sandbox (works against a copy or read-only).
 - [ ] Has at least one adversarial case (the point is defeating overfitting).
+- [ ] Ships a `solution/` dir with a correct implementation — CI seeds the
+      sandbox from it and fails if `verify.sh` doesn't exit 0.
 
 ## Tag reference
 
