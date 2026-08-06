@@ -1,0 +1,19 @@
+Build a markdown-to-HTML converter in the sandbox called md2html.py.
+
+It reads a small markdown document from standard input and prints the converted
+HTML to standard output. Support exactly this subset:
+
+- `# Heading`   -> `<h1>Heading</h1>`
+- `## Heading`  -> `<h2>Heading</h2>`
+- `**bold**`    -> `<strong>bold</strong>`
+- `` `code` ``  -> `<code>code</code>`
+- `- item`      -> `<ul><li>item</li></ul>` (one list per contiguous block)
+- blank line    -> separates blocks
+- other text    -> `<p>text</p>`
+
+HTML-escape the content (e.g. `<` and `&` in the source text must become
+`&lt;` and `&amp;`). The exact output format matters — the verifier compares
+against golden files character-for-character.
+
+Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

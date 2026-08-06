@@ -1,0 +1,21 @@
+Build a CSV sorter in the sandbox called csv_sorter.py.
+
+It reads records from standard input. Records are separated by two semicolons
+(`;;`). Each record is `id,name` (an integer id, a comma, then a name).
+
+It must print the records sorted by id ascending — one per line, in the exact
+same `id,name` format. Sorting must be STABLE: when two records share the same
+id, they must keep their original relative order.
+
+Example input:
+  3,bob;;1,alice;;1,zoe;;2,carol
+
+Example output:
+  1,alice
+  1,zoe
+  2,carol
+  3,bob
+
+Handle empty input (print nothing), duplicate ids (stable order), and ids up to
+10 digits. Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

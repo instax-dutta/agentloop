@@ -1,0 +1,19 @@
+Create a Python module in the sandbox called typed_module.py.
+
+It must define a function:
+
+    def classify(items: list[int]) -> dict[str, int]:
+
+that takes a list of integers and returns a dict mapping "positive", "negative",
+and "zero" to the count of items in each bucket (keys with count 0 are still
+present).
+
+The module must be a valid Python module AND satisfy strict type checking:
+
+1. `python3 -m py_compile typed_module.py` exits 0 (no syntax errors).
+2. If `mypy` is installed, `mypy typed_module.py` exits 0 — every parameter and
+   return value must be fully annotated (the signature above must match
+   exactly, including the `list[int]` and `dict[str, int]` annotations).
+
+Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

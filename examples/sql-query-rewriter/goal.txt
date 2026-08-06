@@ -1,0 +1,17 @@
+Build a SQL query rewriter in the sandbox called sql_rewriter.py.
+
+It reads one SQL SELECT statement from standard input and prints an
+EQUIVALENT rewritten query to standard output. The rewritten query must return
+the EXACT same result set as the original when executed against the same
+database.
+
+Your rewriter may normalize, transform, or restructure the query any way you
+like (e.g. convert `WHERE x IN (1,2)` to `WHERE x = 1 OR x = 2`, or use a
+different but equivalent JOIN form), as long as the results are identical.
+
+The verifier runs both queries against a real SQLite database (the `sqlite3`
+module is built into Python) and compares the result sets row-for-row,
+including column order.
+
+Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

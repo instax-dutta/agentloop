@@ -1,0 +1,25 @@
+Write a Python script in the sandbox called sanitize.py.
+
+It takes exactly one command-line argument: a directory path. It renames every
+file and directory inside that directory (recursively) so that any spaces in
+the name are replaced with underscores.
+
+RULES:
+- Hidden entries (names starting with a dot, e.g. `.hidden file`) must be left
+  completely untouched.
+- If the target name already exists, do NOT overwrite it — append a numeric
+  suffix instead (`_2`, then `_3`, ...) before the extension.
+- Entries without spaces are never touched.
+- Rename contents before their parent directory (a directory rename must not
+  orphan its still-unrenamed children).
+
+Examples:
+  "my notes.txt"  -> "my_notes.txt"
+  "todo list.md"  -> "todo_list.md"
+  "a b.txt" with "a_b.txt" present -> "a_b_2.txt"
+  ".hidden file"  -> left untouched
+
+The verifier builds a fresh fixture tree in a temporary directory and runs
+your script against a COPY of it — your script must never modify the sandbox
+itself. Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

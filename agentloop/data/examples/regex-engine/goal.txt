@@ -1,0 +1,18 @@
+Build a regular-expression matcher in the sandbox called regex_matcher.py.
+
+It reads exactly two lines from standard input:
+  line 1: a regex pattern
+  line 2: a string to search
+
+It must print:
+  MATCH     if the pattern matches anywhere in the string (re.search semantics)
+  NO_MATCH  otherwise
+  ERROR     if the pattern is not a valid regex (e.g. an unbalanced bracket)
+
+Python's re module is the reference — your matcher must behave identically to
+`re.search` for the same inputs, including adversarial edge cases: empty
+patterns, empty strings, escaped dots, character classes, quantifiers,
+anchors, and INVALID regexes (which must print ERROR, not crash).
+
+Test it against the examples in the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

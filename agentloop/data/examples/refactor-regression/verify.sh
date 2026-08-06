@@ -56,7 +56,7 @@ print(f'generated {len(cases)} cases')
 " || exit 2
 
 # Record the reference behaviour
-python3 -m agentloop-oracle record \
+python3 -m agentloop.oracle record \
   --reference "python3 /tmp/ref.py" \
   --inputs /tmp/cases.txt \
   --visible 10 \
@@ -70,7 +70,7 @@ if [ ! -f "$PROJECT_ROOT/sandbox/refactor_target.py" ]; then
 fi
 
 # Grade the candidate (the refactored code in the sandbox)
-python3 -m agentloop-oracle grade \
+python3 -m agentloop.oracle grade \
   --candidate "python3 $PROJECT_ROOT/sandbox/refactor_target.py" \
   --oracle "$ORACLE_DIR/refactor_oracle.json" \
   --seal "${ORACLE_SEAL:-refactor-demo-secret}" || fail=1

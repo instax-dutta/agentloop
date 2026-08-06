@@ -1,0 +1,18 @@
+Build a tiny HTTP API server in the sandbox called app.py. It must use only the
+Python standard library (e.g. http.server) so it runs anywhere.
+
+Endpoints:
+
+1. `GET /health`  -> 200 with JSON body {"status": "ok"}
+2. `GET /items/<id>` -> 200 with JSON body {"id": <id>, "name": "item-<id>"}
+   for integer ids 1..100; 404 with JSON {"error": "not found"} otherwise.
+
+Server must listen on 0.0.0.0:8765. Content-Type must be application/json on
+every response. Respond to unknown paths with 404 JSON.
+
+The verifier starts your server as a subprocess, waits for /health, then checks
+/items/<id> for both a valid id and an out-of-range id, and finally kills the
+server.
+
+Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.

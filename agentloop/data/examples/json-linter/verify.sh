@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # When run from project root by AgentLoop, sandbox/ is at project root
-SANDBOX="$PROJECT_ROOT/sandbox"
+SANDBOX="${AGENTLOOP_SANDBOX:-$PROJECT_ROOT/sandbox}"
 
 fail=0
 check() {

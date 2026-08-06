@@ -1,0 +1,22 @@
+Build a git history rewriter in the sandbox called git_author_fixer.py.
+
+It takes one command-line argument: the path to a git repository. It must
+rewrite that repository's ENTIRE history so every commit's author name and
+email become exactly:
+
+    AgentLoop <agentloop@local>
+
+Use any git plumbing you like (e.g. `git filter-branch --env-filter` or
+`git filter-repo`), but the end state must be:
+
+1. `git log --format='%an <%ae>'` shows ONLY `AgentLoop <agentloop@local>`.
+2. The file contents, branch names, and commit topology are unchanged
+   (verify with `git log --oneline` — same commit messages and order).
+3. The script exits 0 and is safe to run (it must not touch any repo outside
+   the given path).
+
+The verifier builds a fresh fixture repo with several commits by different
+authors, runs your script against it, and checks the rewritten history.
+
+Test it against the verification oracle before replying DONE.
+When the goal is met and verified, reply exactly: DONE.
